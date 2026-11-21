@@ -1,391 +1,277 @@
-const C = {
-  endpoint: 'https://nyc.cloud.appwrite.io/v1',
-  projectId: '6b01e299000b19ac36ce',
-  databaseId: '6b01e350001ca47807e5',
+const {
+  Client,
+  Account,
+  TablesDB,
+  ID,
+  Query,
+  Permission,
+  Role
+} = Appwrite;
+
+
+/* =========================================================
+   CONFIGURAÇÃO MAKARIA
+========================================================= */
+
+const CONFIG = {
+  endpoint: "https://nyc.cloud.appwrite.io/v1",
+
+  projectId: "6b01e299000b19ac36ce",
+
+  databaseId: "6b01e350001ca47807e5",
 
   tables: {
-    profiles: 'profiles',
-    settings: '6b01e569002a228a1c5b',
-    transactions: '6b01e6aa0036b4223488',
-    goals: '6b01e8700035f839daea',
-    accounts: '6b01fc9a00179915f55c',
-    categories: '6b01fd500025ac427542',
-    bills: '6b01fdb800341288b640',
-    cards: '6b020079002ad9473ae5'
+
+    profiles: "COLE_ID_PROFILES",
+    settings: "COLE_ID_SETTINGS",
+    transactions: "COLE_ID_TRANSACTIONS",
+    goals: "COLE_ID_GOALS",
+    accounts: "COLE_ID_ACCOUNTS",
+    categories: "COLE_ID_CATEGORIES",
+    bills: "COLE_ID_BILLS",
+    cards: "COLE_ID_CARDS"
+
   }
 };
 
 
-/* =========================
+/* =========================================================
    APPWRITE
-========================= */
+========================================================= */
 
-async function api(path, options = {}) {
-  const response = await fetch(C.endpoint + path, {
-    method: options.method || 'GET',
-    credentials: 'include',
-    headers: {
-      'X-Appwrite-Project': C.projectId,
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
-    },
-    body: options.body
-  });
+const client = new Client();
 
-  let data = {};
+client
+  .setEndpoint(CONFIG.endpoint)
+  .setProject(CONFIG.projectId);
 
-  try {
-    data = await response.json();
-  } catch (_) {}
-
-  if (!response.ok) {
-    throw new Error(
-      data?.message ||
-      `Erro ${response.status} ao acessar o Appwrite`
-    );
-  }
-
-  return data;
-}
+const account = new Account(client);
+const tablesDB = new TablesDB(client);
 
 
-/* =========================
-   APPWRITE AUTH
-========================= */
-
-const A = {
-
-  me() {
-    return api('/account');
-  },
-
-  login(email, password) {
-    return api('/account/sessions/email', {
-      method: 'POST',
-      body: JSON.stringify({
-        email,
-        password
-      })
-    });
-  },
-
-  signup(name, email, password) {
-    return api('/account', {
-      method: 'POST',
-      body: JSON.stringify({
-        userId: 'unique()',
-        email,
-        password,
-        name
-      })
-    });
-  },
-
-  logout() {
-    return api('/account/sessions/current', {
-      method: 'DELETE'
-    });
-  },
-
-
-  /* =========================
-     TABLES
-  ========================= */
-
-  async list(table) {
-    const result = await api(
-      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows?limit=100`
-    );
-
-    return result.rows || [];
-  },
-
-
-  async create(table, data, userId) {
-
-    const permissions = [
-      `read("user:${userId}")`,
-      `update("user:${userId}")`,
-      `delete("user:${userId}")`
-    ];
-
-    return api(
-      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          rowId: 'unique()',
-          data,
-          permissions
-        })
-      }
-    );
-  },
-
-
-  update(table, rowId, data) {
-
-    return api(
-      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows/${rowId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({
-          data
-        })
-      }
-    );
-  },
-
-
-  delete(table, rowId) {
-
-    return api(
-      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows/${rowId}`,
-      {
-        method: 'DELETE'
-      }
-    );
-  }
-};
-
-
-/* =========================
-   ELEMENTOS
-========================= */
-
-const $ = selector => document.querySelector(selector);
-
-const auth = $('#auth');
-const app = $('#app');
-const authForm = $('#authForm');
-const authBtn = $('#authBtn');
-const authMsg = $('#authMsg');
-const nameBox = $('#nameBox');
-const nameInput = $('#name');
-const emailInput = $('#email');
-const passInput = $('#pass');
-
-
-/* =========================
+/* =========================================================
    ESTADO
-========================= */
+========================================================= */
 
-let user = null;
-let mode = 'login';
+let currentUser = null;
+let currentPage = "home";
 
 
-/* =========================
+/* =========================================================
+   ELEMENTOS
+========================================================= */
+
+const $ = (id) => document.getElementById(id);
+
+
+/* =========================================================
    TOAST
-========================= */
+========================================================= */
 
-function toast(message) {
+function toast(message, type = "normal") {
 
-  const el = $('#toast');
+  const el = $("toast");
 
   if (!el) return;
 
   el.textContent = message;
-  el.classList.add('show');
+  el.className = `toast ${type}`;
 
   setTimeout(() => {
-    el.classList.remove('show');
-  }, 3000);
+
+    el.textContent = "";
+    el.className = "";
+
+  }, 3500);
 }
 
 
-/* =========================
-   AUTH VISUAL
-========================= */
+/* =========================================================
+   AUTENTICAÇÃO
+========================================================= */
 
-function showAuth() {
-
-  auth?.classList.remove('hide');
-  app?.classList.add('hide');
-}
-
-
-function showApp() {
-
-  auth?.classList.add('hide');
-  app?.classList.remove('hide');
-}
-
-
-/* =========================
-   TABS LOGIN / CADASTRO
-========================= */
-
-document.querySelectorAll('[data-mode]').forEach(button => {
-
-  button.addEventListener('click', () => {
-
-    mode = button.dataset.mode;
-
-    document
-      .querySelectorAll('[data-mode]')
-      .forEach(btn => btn.classList.remove('active'));
-
-    button.classList.add('active');
-
-    if (mode === 'signup') {
-
-      nameBox?.classList.remove('hide');
-
-      authBtn.textContent = 'Criar conta';
-
-      nameInput.required = true;
-
-    } else {
-
-      nameBox?.classList.add('hide');
-
-      authBtn.textContent = 'Entrar';
-
-      nameInput.required = false;
-    }
-
-    if (authMsg) {
-      authMsg.textContent = '';
-    }
-  });
-});
-
-
-/* =========================
-   LOGIN / CADASTRO
-========================= */
-
-authForm?.addEventListener('submit', async event => {
-
-  event.preventDefault();
-
-  const email = emailInput.value.trim();
-  const password = passInput.value;
-  const name = nameInput?.value.trim() || '';
-
-  authBtn.disabled = true;
-
-  authMsg.textContent = 'aguarde...';
+async function getUser() {
 
   try {
 
-    if (mode === 'signup') {
+    return await account.get();
 
-      if (!name) {
-        throw new Error('Digite seu nome completo.');
-      }
+  } catch {
 
-      await A.signup(name, email, password);
+    return null;
 
-      /*
-       * Depois de criar a conta,
-       * fazemos login automaticamente.
-       */
+  }
 
-      await A.login(email, password);
+}
 
-      user = await A.me();
 
-      await createInitialProfile();
+async function signup(name, email, password) {
 
-      await createInitialSettings();
+  try {
 
-      toast('conta criada com sucesso');
+    const user = await account.create(
+      ID.unique(),
+      email,
+      password,
+      name
+    );
 
-    } else {
+    await account.createEmailPasswordSession(
+      email,
+      password
+    );
 
-      await A.login(email, password);
+    currentUser = user;
 
-      user = await A.me();
+    await ensureProfile();
 
-      await ensureProfile();
-
-      await ensureSettings();
-
-      toast('login realizado');
-
-    }
+    await ensureSettings();
 
     showApp();
 
-    await startApp();
+    toast("conta criada com sucesso");
 
   } catch (error) {
 
     console.error(error);
 
-    authMsg.textContent =
-      error.message || 'não foi possível continuar.';
+    toast(
+      error.message || "não foi possível criar a conta",
+      "error"
+    );
 
-  } finally {
-
-    authBtn.disabled = false;
   }
-});
+
+}
 
 
-/* =========================
-   PROFILE
-========================= */
-
-async function createInitialProfile() {
-
-  if (!user) return;
+async function login(email, password) {
 
   try {
 
-    await A.create(
-      'profiles',
-      {
-        full_name: user.name || nameInput.value.trim(),
-        email: user.email,
-        avatar_url: ''
-      },
-      user.$id
+    await account.createEmailPasswordSession(
+      email,
+      password
     );
+
+    currentUser = await account.get();
+
+    await ensureProfile();
+
+    await ensureSettings();
+
+    showApp();
+
+    toast("login realizado");
 
   } catch (error) {
 
-    console.warn('perfil não criado:', error.message);
+    console.error(error);
+
+    toast(
+      error.message || "e-mail ou senha inválidos",
+      "error"
+    );
+
   }
+
 }
 
+
+async function logout() {
+
+  try {
+
+    await account.deleteSession("current");
+
+  } catch (error) {
+
+    console.error(error);
+
+  }
+
+  currentUser = null;
+
+  $("app").classList.add("hide");
+  $("auth").classList.remove("hide");
+
+}
+
+
+/* =========================================================
+   PERFIL
+========================================================= */
 
 async function ensureProfile() {
 
   try {
 
-    const rows = await A.list('profiles');
+    await tablesDB.getRow({
+      databaseId: CONFIG.databaseId,
+      tableId: CONFIG.tables.profiles,
+      rowId: currentUser.$id
+    });
 
-    const mine = rows.find(
-      row => row.data?.email === user.email
-    );
+  } catch {
 
-    if (!mine) {
-      await createInitialProfile();
-    }
+    await tablesDB.createRow({
+      databaseId: CONFIG.databaseId,
+      tableId: CONFIG.tables.profiles,
+      rowId: currentUser.$id,
 
-  } catch (error) {
+      data: {
+        full_name: currentUser.name || "",
+        email: currentUser.email || "",
+        avatar_url: ""
+      },
 
-    console.warn('não foi possível verificar perfil:', error.message);
+      permissions: [
+        Permission.read(
+          Role.user(currentUser.$id)
+        ),
+
+        Permission.update(
+          Role.user(currentUser.$id)
+        ),
+
+        Permission.delete(
+          Role.user(currentUser.$id)
+        )
+      ]
+    });
+
   }
+
 }
 
 
-/* =========================
-   SETTINGS
-========================= */
+/* =========================================================
+   CONFIGURAÇÕES
+========================================================= */
 
-async function createInitialSettings() {
-
-  if (!user) return;
+async function ensureSettings() {
 
   try {
 
-    await A.create(
-      'settings',
-      {
-        user_id: user.$id,
+    const result = await tablesDB.listRows({
+      databaseId: CONFIG.databaseId,
+      tableId: CONFIG.tables.settings,
+      queries: [
+        Query.equal("user_id", currentUser.$id),
+        Query.limit(1)
+      ]
+    });
+
+    if (result.total > 0) return;
+
+    await tablesDB.createRow({
+
+      databaseId: CONFIG.databaseId,
+      tableId: CONFIG.tables.settings,
+      rowId: ID.unique(),
+
+      data: {
+        user_id: currentUser.$id,
         gross_salary: 2759.74,
         advance_pct: 40,
         inss_pct: 9,
@@ -393,191 +279,230 @@ async function createInitialSettings() {
         life_insurance: 3.82,
         negocial: 21
       },
-      user.$id
-    );
+
+      permissions: [
+        Permission.read(
+          Role.user(currentUser.$id)
+        ),
+
+        Permission.update(
+          Role.user(currentUser.$id)
+        ),
+
+        Permission.delete(
+          Role.user(currentUser.$id)
+        )
+      ]
+
+    });
 
   } catch (error) {
 
-    console.warn('configuração inicial não criada:', error.message);
+    console.error("Erro ao criar configurações:", error);
+
   }
+
 }
 
 
-async function ensureSettings() {
+/* =========================================================
+   TABELAS
+========================================================= */
 
-  try {
+async function listRows(table) {
 
-    const rows = await A.list('settings');
+  const result = await tablesDB.listRows({
 
-    const mine = rows.find(
-      row => row.data?.user_id === user.$id
-    );
+    databaseId: CONFIG.databaseId,
 
-    if (!mine) {
-      await createInitialSettings();
-    }
+    tableId: CONFIG.tables[table],
 
-  } catch (error) {
+    queries: [
+      Query.equal("user_id", currentUser.$id),
+      Query.limit(100)
+    ]
 
-    console.warn(
-      'não foi possível verificar configurações:',
-      error.message
-    );
-  }
-}
-
-
-/* =========================
-   LOGOUT
-========================= */
-
-$('#logout')?.addEventListener('click', async () => {
-
-  try {
-
-    await A.logout();
-
-  } catch (error) {
-
-    console.warn(error);
-
-  } finally {
-
-    user = null;
-
-    showAuth();
-
-    toast('sessão encerrada');
-  }
-});
-
-
-/* =========================
-   TEMA
-========================= */
-
-$('#theme')?.addEventListener('click', () => {
-
-  document.body.classList.toggle('dark');
-
-  const dark =
-    document.body.classList.contains('dark');
-
-  localStorage.setItem(
-    'makaria-theme',
-    dark ? 'dark' : 'light'
-  );
-});
-
-
-function loadTheme() {
-
-  const theme =
-    localStorage.getItem('makaria-theme');
-
-  if (theme === 'dark') {
-    document.body.classList.add('dark');
-  }
-}
-
-
-/* =========================
-   NAVEGAÇÃO
-========================= */
-
-document.querySelectorAll('[data-page]').forEach(button => {
-
-  button.addEventListener('click', () => {
-
-    document
-      .querySelectorAll('[data-page]')
-      .forEach(btn => btn.classList.remove('active'));
-
-    button.classList.add('active');
-
-    renderPage(button.dataset.page);
   });
-});
+
+  return result.rows || [];
+
+}
 
 
-/* =========================
+async function createRow(table, data) {
+
+  return await tablesDB.createRow({
+
+    databaseId: CONFIG.databaseId,
+
+    tableId: CONFIG.tables[table],
+
+    rowId: ID.unique(),
+
+    data: {
+      user_id: currentUser.$id,
+      ...data
+    },
+
+    permissions: [
+
+      Permission.read(
+        Role.user(currentUser.$id)
+      ),
+
+      Permission.update(
+        Role.user(currentUser.$id)
+      ),
+
+      Permission.delete(
+        Role.user(currentUser.$id)
+      )
+
+    ]
+
+  });
+
+}
+
+
+/* =========================================================
+   MOSTRAR APP
+========================================================= */
+
+function showApp() {
+
+  $("auth").classList.add("hide");
+  $("app").classList.remove("hide");
+
+  $("hello").textContent =
+    `olá, ${currentUser.name || "Mirela"}`;
+
+  loadPage(currentPage);
+
+}
+
+
+/* =========================================================
+   NAVEGAÇÃO
+========================================================= */
+
+function setupNavigation() {
+
+  document
+    .querySelectorAll("[data-page]")
+    .forEach(button => {
+
+      button.addEventListener("click", () => {
+
+        currentPage = button.dataset.page;
+
+        document
+          .querySelectorAll("[data-page]")
+          .forEach(btn =>
+            btn.classList.remove("active")
+          );
+
+        button.classList.add("active");
+
+        loadPage(currentPage);
+
+      });
+
+    });
+
+}
+
+
+/* =========================================================
    PÁGINAS
-========================= */
+========================================================= */
 
-async function renderPage(page) {
+async function loadPage(page) {
 
-  const main = $('#main');
+  const main = $("main");
 
   if (!main) return;
 
-  if (page === 'home') {
+  if (page === "home") {
 
     renderHome();
+
     return;
+
   }
 
-  if (page === 'transactions') {
 
-    renderTransactions();
+  if (page === "transactions") {
+
+    await renderTransactions();
+
     return;
+
   }
 
-  if (page === 'goals') {
 
-    renderGoals();
+  if (page === "goals") {
+
+    await renderGoals();
+
     return;
+
   }
 
-  if (page === 'accounts') {
 
-    renderAccounts();
+  if (page === "accounts") {
+
+    await renderAccounts();
+
     return;
+
   }
 
-  if (page === 'cards') {
 
-    renderCards();
+  if (page === "cards") {
+
+    await renderCards();
+
     return;
+
   }
 
-  if (page === 'salary') {
+
+  if (page === "salary") {
 
     renderSalary();
+
     return;
+
   }
 
-  if (page === 'categories') {
 
-    renderCategories();
+  if (page === "categories") {
+
+    await renderCategories();
+
     return;
+
   }
+
 }
 
 
-/* =========================
+/* =========================================================
    HOME
-========================= */
+========================================================= */
 
 function renderHome() {
 
-  const main = $('#main');
+  $("main").innerHTML = `
 
-  main.innerHTML = `
+    <section class="page">
 
-    <div class="page">
+      <h1>visão geral</h1>
 
-      <div class="page-title">
-
-        <div>
-          <h1>visão geral</h1>
-
-          <p>
-            acompanhe sua vida financeira.
-          </p>
-        </div>
-
-      </div>
-
+      <p>
+        acompanhe sua vida financeira com clareza.
+      </p>
 
       <div class="cards">
 
@@ -597,241 +522,211 @@ function renderHome() {
 
         <div class="card">
           <small>gastos</small>
-          <strong id="homeExpense">
+          <strong id="homeExpenses">
             R$ 0,00
           </strong>
         </div>
 
         <div class="card">
           <small>investimentos</small>
-          <strong id="homeInvestment">
+          <strong id="homeInvestments">
             R$ 0,00
           </strong>
         </div>
 
       </div>
 
+    </section>
 
-      <div class="panel">
-
-        <h2>bem-vinda à makaria</h2>
-
-        <p>
-          organize seu dinheiro com propósito,
-          acompanhe suas metas e construa sua
-          prosperidade.
-        </p>
-
-      </div>
-
-    </div>
   `;
 
-  loadHomeData();
+  calculateHome();
+
 }
 
 
-async function loadHomeData() {
+async function calculateHome() {
 
   try {
 
-    const rows = await A.list('transactions');
-
-    const mine = rows.filter(
-      row => row.data?.user_id === user.$id
-    );
+    const rows = await listRows("transactions");
 
     let income = 0;
-    let expense = 0;
-    let investment = 0;
+    let expenses = 0;
+    let investments = 0;
 
-    mine.forEach(row => {
+    rows.forEach(row => {
 
-      const amount =
-        Number(row.data.amount) || 0;
+      const amount = Number(row.amount) || 0;
 
-      const type =
-        row.data.type;
-
-      if (type === 'income') {
-
+      if (row.type === "entrada") {
         income += amount;
+      }
 
-      } else if (type === 'expense') {
+      if (row.type === "saida") {
+        expenses += amount;
+      }
 
-        expense += amount;
-
-      } else if (type === 'investment') {
-
-        investment += amount;
-
+      if (row.type === "investimento") {
+        investments += amount;
       }
 
     });
 
     const balance =
-      income - expense - investment;
+      income - expenses - investments;
 
-    $('#homeBalance').textContent =
+    $("homeBalance").textContent =
       money(balance);
 
-    $('#homeIncome').textContent =
+    $("homeIncome").textContent =
       money(income);
 
-    $('#homeExpense').textContent =
-      money(expense);
+    $("homeExpenses").textContent =
+      money(expenses);
 
-    $('#homeInvestment').textContent =
-      money(investment);
+    $("homeInvestments").textContent =
+      money(investments);
 
   } catch (error) {
 
     console.error(error);
 
   }
+
 }
 
 
-/* =========================
+/* =========================================================
    TRANSAÇÕES
-========================= */
+========================================================= */
 
-function renderTransactions() {
+async function renderTransactions() {
 
-  const main = $('#main');
+  $("main").innerHTML = `
 
-  main.innerHTML = `
+    <section class="page">
 
-    <div class="page">
+      <h1>transações</h1>
 
-      <div class="page-title">
+      <p>
+        registre suas entradas, gastos e investimentos.
+      </p>
 
-        <div>
-          <h1>transações</h1>
-          <p>
-            registre suas entradas, gastos e investimentos.
-          </p>
-        </div>
+      <form id="transactionForm">
 
+        <label>
+          tipo
+
+          <select id="tType">
+
+            <option value="entrada">
+              entrada
+            </option>
+
+            <option value="saida">
+              gasto
+            </option>
+
+            <option value="investimento">
+              investimento
+            </option>
+
+            <option value="transferencia">
+              transferência
+            </option>
+
+          </select>
+
+        </label>
+
+
+        <label>
+          valor
+
+          <input
+            id="tAmount"
+            type="number"
+            min="0"
+            step="0.01"
+            required
+          >
+
+        </label>
+
+
+        <label>
+          categoria
+
+          <input
+            id="tCategory"
+            placeholder="ex.: alimentação"
+            required
+          >
+
+        </label>
+
+
+        <label>
+          descrição
+
+          <input
+            id="tDescription"
+            placeholder="opcional"
+          >
+
+        </label>
+
+
+        <label>
+          data
+
+          <input
+            id="tDate"
+            type="date"
+            required
+          >
+
+        </label>
+
+
+        <label>
+          forma de pagamento
+
+          <input
+            id="tPayment"
+            placeholder="pix, cartão, dinheiro..."
+          >
+
+        </label>
+
+
+        <button class="primary">
+          salvar transação
+        </button>
+
+      </form>
+
+
+      <div id="transactionList">
+        carregando...
       </div>
 
+    </section>
 
-      <div class="panel">
-
-        <form id="transactionForm">
-
-          <label>
-            tipo
-
-            <select id="transactionType">
-
-              <option value="income">
-                entrada
-              </option>
-
-              <option value="expense">
-                gasto
-              </option>
-
-              <option value="investment">
-                investimento
-              </option>
-
-            </select>
-
-          </label>
-
-
-          <label>
-            valor
-
-            <input
-              id="transactionAmount"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-            >
-
-          </label>
-
-
-          <label>
-            categoria
-
-            <input
-              id="transactionCategory"
-              required
-            >
-
-          </label>
-
-
-          <label>
-            descrição
-
-            <input
-              id="transactionDescription"
-            >
-
-          </label>
-
-
-          <label>
-            data
-
-            <input
-              id="transactionDate"
-              type="date"
-              required
-            >
-
-          </label>
-
-
-          <label>
-            forma de pagamento
-
-            <input
-              id="transactionPayment"
-            >
-
-          </label>
-
-
-          <button class="primary">
-            salvar transação
-          </button>
-
-        </form>
-
-      </div>
-
-
-      <div class="panel">
-
-        <h2>últimas transações</h2>
-
-        <div id="transactionList">
-          carregando...
-        </div>
-
-      </div>
-
-    </div>
   `;
 
 
-  $('#transactionDate').value =
+  $("tDate").value =
     new Date().toISOString().slice(0, 10);
 
 
-  $('#transactionForm').addEventListener(
-    'submit',
-    saveTransaction
-  );
+  $("transactionForm")
+    .addEventListener("submit", saveTransaction);
 
-  loadTransactions();
+
+  await loadTransactions();
+
 }
 
 
@@ -841,188 +736,220 @@ async function saveTransaction(event) {
 
   try {
 
-    await A.create(
-      'transactions',
-      {
-        user_id: user.$id,
-        type: $('#transactionType').value,
-        amount: Number($('#transactionAmount').value),
-        category: $('#transactionCategory').value,
-        description: $('#transactionDescription').value,
-        transaction_date: $('#transactionDate').value,
-        payment_method: $('#transactionPayment').value,
-        installments: 1,
-        installment_number: 1
-      },
-      user.$id
-    );
+    await createRow("transactions", {
 
-    toast('transação salva');
+      type: $("tType").value,
+
+      amount: Number(
+        $("tAmount").value
+      ),
+
+      category:
+        $("tCategory").value.trim(),
+
+      description:
+        $("tDescription").value.trim(),
+
+      transaction_date:
+        $("tDate").value,
+
+      payment_method:
+        $("tPayment").value.trim(),
+
+      installments: 1,
+
+      installment_number: 1
+
+    });
+
+
+    toast("transação salva");
 
     event.target.reset();
 
-    $('#transactionDate').value =
+    $("tDate").value =
       new Date().toISOString().slice(0, 10);
 
-    loadTransactions();
+    await loadTransactions();
 
   } catch (error) {
 
     console.error(error);
 
-    toast(error.message);
+    toast(
+      error.message ||
+      "não foi possível salvar a transação",
+      "error"
+    );
+
   }
+
 }
 
 
 async function loadTransactions() {
 
-  const list = $('#transactionList');
+  const list = $("transactionList");
 
   if (!list) return;
 
   try {
 
-    const rows = await A.list('transactions');
+    const rows =
+      await listRows("transactions");
 
-    const mine = rows
-      .filter(row =>
-        row.data?.user_id === user.$id
-      )
-      .sort((a, b) =>
-        String(b.data.transaction_date)
-          .localeCompare(
-            String(a.data.transaction_date)
-          )
-      );
+    if (!rows.length) {
 
-    if (!mine.length) {
-
-      list.innerHTML =
-        '<p>nenhuma transação cadastrada.</p>';
-
-      return;
-    }
-
-    list.innerHTML = mine.map(row => {
-
-      const d = row.data;
-
-      return `
-
-        <div class="transaction">
-
-          <div>
-
-            <strong>
-              ${escapeHtml(d.category || 'sem categoria')}
-            </strong>
-
-            <small>
-              ${escapeHtml(d.description || '')}
-            </small>
-
-          </div>
-
-          <strong>
-            ${money(Number(d.amount) || 0)}
-          </strong>
-
+      list.innerHTML = `
+        <div class="empty">
+          nenhuma transação cadastrada.
         </div>
       `;
 
-    }).join('');
+      return;
+
+    }
+
+
+    rows.sort((a, b) =>
+      String(b.transaction_date)
+        .localeCompare(
+          String(a.transaction_date)
+        )
+    );
+
+
+    list.innerHTML = rows.map(row => `
+
+      <div class="transaction">
+
+        <div>
+
+          <strong>
+            ${escapeHTML(row.category)}
+          </strong>
+
+          <small>
+            ${escapeHTML(
+              row.description || ""
+            )}
+          </small>
+
+          <small>
+            ${formatDate(
+              row.transaction_date
+            )}
+          </small>
+
+        </div>
+
+        <strong>
+          ${money(row.amount)}
+        </strong>
+
+      </div>
+
+    `).join("");
 
   } catch (error) {
 
-    list.innerHTML =
-      `<p>${escapeHtml(error.message)}</p>`;
+    console.error(error);
+
+    list.innerHTML = `
+      <div class="empty">
+        não foi possível carregar as transações.
+      </div>
+    `;
+
   }
+
 }
 
 
-/* =========================
+/* =========================================================
    METAS
-========================= */
+========================================================= */
 
-function renderGoals() {
+async function renderGoals() {
 
-  const main = $('#main');
+  $("main").innerHTML = `
 
-  main.innerHTML = `
-
-    <div class="page">
+    <section class="page">
 
       <h1>metas</h1>
 
-      <div class="panel">
+      <p>
+        transforme seus planos em objetivos financeiros.
+      </p>
 
-        <form id="goalForm">
+      <form id="goalForm">
 
-          <label>
-            nome da meta
+        <label>
+          nome da meta
 
-            <input id="goalName" required>
-          </label>
+          <input
+            id="goalName"
+            required
+          >
 
-          <label>
-            valor objetivo
+        </label>
 
-            <input
-              id="goalTarget"
-              type="number"
-              step="0.01"
-              required
-            >
-          </label>
+        <label>
+          valor desejado
 
-          <label>
-            valor já guardado
+          <input
+            id="goalTarget"
+            type="number"
+            min="0"
+            step="0.01"
+            required
+          >
 
-            <input
-              id="goalSaved"
-              type="number"
-              step="0.01"
-              value="0"
-            >
-          </label>
+        </label>
 
-          <label>
-            data objetivo
+        <label>
+          quanto já possui
 
-            <input
-              id="goalDate"
-              type="date"
-            >
-          </label>
+          <input
+            id="goalSaved"
+            type="number"
+            min="0"
+            step="0.01"
+            value="0"
+          >
 
-          <button class="primary">
-            salvar meta
-          </button>
+        </label>
 
-        </form>
+        <label>
+          prazo
 
+          <input
+            id="goalDate"
+            type="date"
+          >
+
+        </label>
+
+        <button class="primary">
+          criar meta
+        </button>
+
+      </form>
+
+      <div id="goalList">
+        carregando...
       </div>
 
-      <div class="panel">
+    </section>
 
-        <h2>suas metas</h2>
-
-        <div id="goalList">
-          carregando...
-        </div>
-
-      </div>
-
-    </div>
   `;
 
-  $('#goalForm').addEventListener(
-    'submit',
-    saveGoal
-  );
 
-  loadGoals();
+  $("goalForm")
+    .addEventListener("submit", saveGoal);
+
+  await loadGoals();
+
 }
 
 
@@ -1032,176 +959,208 @@ async function saveGoal(event) {
 
   try {
 
-    await A.create(
-      'goals',
-      {
-        user_id: user.$id,
-        name: $('#goalName').value,
-        target_amount:
-          Number($('#goalTarget').value),
-        saved_amount:
-          Number($('#goalSaved').value || 0),
-        target_date:
-          $('#goalDate').value,
-        description: ''
-      },
-      user.$id
-    );
+    await createRow("goals", {
 
-    toast('meta criada');
+      name:
+        $("goalName").value.trim(),
+
+      target_amount:
+        Number($("goalTarget").value),
+
+      saved_amount:
+        Number($("goalSaved").value || 0),
+
+      target_date:
+        $("goalDate").value || "",
+
+      description: ""
+
+    });
+
+    toast("meta criada");
 
     event.target.reset();
 
-    loadGoals();
+    await loadGoals();
 
   } catch (error) {
 
-    toast(error.message);
+    console.error(error);
+
+    toast(
+      error.message ||
+      "não foi possível criar a meta",
+      "error"
+    );
+
   }
+
 }
 
 
 async function loadGoals() {
 
-  const list = $('#goalList');
+  const list = $("goalList");
+
+  if (!list) return;
 
   try {
 
-    const rows = await A.list('goals');
+    const rows =
+      await listRows("goals");
 
-    const mine = rows.filter(
-      row => row.data?.user_id === user.$id
-    );
+    if (!rows.length) {
 
-    if (!mine.length) {
-
-      list.innerHTML =
-        '<p>nenhuma meta cadastrada.</p>';
+      list.innerHTML = `
+        <div class="empty">
+          nenhuma meta cadastrada.
+        </div>
+      `;
 
       return;
+
     }
 
-    list.innerHTML = mine.map(row => {
 
-      const d = row.data;
+    list.innerHTML = rows.map(row => {
 
       const target =
-        Number(d.target_amount) || 0;
+        Number(row.target_amount) || 0;
 
       const saved =
-        Number(d.saved_amount) || 0;
+        Number(row.saved_amount) || 0;
 
       const percent =
         target > 0
-          ? Math.min(100, (saved / target) * 100)
+          ? Math.min(
+              100,
+              (saved / target) * 100
+            )
           : 0;
 
       return `
 
         <div class="goal">
 
-          <strong>
-            ${escapeHtml(d.name)}
-          </strong>
+          <div>
 
-          <p>
-            ${money(saved)}
-            de
-            ${money(target)}
-          </p>
+            <strong>
+              ${escapeHTML(row.name)}
+            </strong>
+
+            <small>
+              ${money(saved)}
+              de
+              ${money(target)}
+            </small>
+
+          </div>
 
           <div class="progress">
-            <div style="width:${percent}%"></div>
+
+            <span
+              style="width:${percent}%"
+            ></span>
+
           </div>
 
           <small>
-            ${percent.toFixed(1)}%
+            ${percent.toFixed(0)}%
           </small>
 
         </div>
+
       `;
 
-    }).join('');
+    }).join("");
 
   } catch (error) {
 
-    list.innerHTML =
-      `<p>${escapeHtml(error.message)}</p>`;
+    console.error(error);
+
+    list.innerHTML = `
+      <div class="empty">
+        não foi possível carregar as metas.
+      </div>
+    `;
+
   }
+
 }
 
 
-/* =========================
+/* =========================================================
    CONTAS
-========================= */
+========================================================= */
 
-function renderAccounts() {
+async function renderAccounts() {
 
-  const main = $('#main');
+  $("main").innerHTML = `
 
-  main.innerHTML = `
-
-    <div class="page">
+    <section class="page">
 
       <h1>contas</h1>
 
-      <div class="panel">
+      <p>
+        organize suas contas e saldos.
+      </p>
 
-        <form id="accountForm">
+      <form id="accountForm">
 
-          <label>
-            nome
+        <label>
+          nome
 
-            <input id="accountName" required>
-          </label>
+          <input
+            id="accountName"
+            required
+          >
 
-          <label>
-            saldo
+        </label>
 
-            <input
-              id="accountBalance"
-              type="number"
-              step="0.01"
-              value="0"
-            >
-          </label>
+        <label>
+          saldo
 
-          <label>
-            dia de vencimento
+          <input
+            id="accountBalance"
+            type="number"
+            step="0.01"
+            value="0"
+          >
 
-            <input
-              id="accountDue"
-              type="number"
-              min="1"
-              max="31"
-            >
-          </label>
+        </label>
 
-          <button class="primary">
-            salvar conta
-          </button>
+        <label>
+          dia de vencimento
 
-        </form>
+          <input
+            id="accountDue"
+            type="number"
+            min="1"
+            max="31"
+          >
 
+        </label>
+
+        <button class="primary">
+          adicionar conta
+        </button>
+
+      </form>
+
+      <div id="accountList">
+        carregando...
       </div>
 
-      <div class="panel">
+    </section>
 
-        <div id="accountList">
-          carregando...
-        </div>
-
-      </div>
-
-    </div>
   `;
 
-  $('#accountForm').addEventListener(
-    'submit',
-    saveAccount
-  );
 
-  loadAccounts();
+  $("accountForm")
+    .addEventListener("submit", saveAccount);
+
+  await loadAccounts();
+
 }
 
 
@@ -1211,175 +1170,191 @@ async function saveAccount(event) {
 
   try {
 
-    await A.create(
-      'accounts',
-      {
-        user_id: user.$id,
-        name: $('#accountName').value,
-        balance:
-          Number($('#accountBalance').value || 0),
-        due_day:
-          Number($('#accountDue').value || 0),
-        recurring: false
-      },
-      user.$id
-    );
+    await createRow("accounts", {
 
-    toast('conta salva');
+      name:
+        $("accountName").value.trim(),
+
+      balance:
+        Number(
+          $("accountBalance").value || 0
+        ),
+
+      due_day:
+        Number(
+          $("accountDue").value || 0
+        ),
+
+      recurring: false
+
+    });
+
+    toast("conta adicionada");
 
     event.target.reset();
 
-    loadAccounts();
+    await loadAccounts();
 
   } catch (error) {
 
-    toast(error.message);
+    console.error(error);
+
+    toast(
+      error.message ||
+      "não foi possível adicionar a conta",
+      "error"
+    );
+
   }
+
 }
 
 
 async function loadAccounts() {
 
-  const list = $('#accountList');
+  const list = $("accountList");
+
+  if (!list) return;
 
   try {
 
-    const rows = await A.list('accounts');
+    const rows =
+      await listRows("accounts");
 
-    const mine = rows.filter(
-      row => row.data?.user_id === user.$id
-    );
+    if (!rows.length) {
 
-    if (!mine.length) {
-
-      list.innerHTML =
-        '<p>nenhuma conta cadastrada.</p>';
-
-      return;
-    }
-
-    list.innerHTML = mine.map(row => {
-
-      const d = row.data;
-
-      return `
-
-        <div class="transaction">
-
-          <strong>
-            ${escapeHtml(d.name)}
-          </strong>
-
-          <strong>
-            ${money(Number(d.balance) || 0)}
-          </strong>
-
+      list.innerHTML = `
+        <div class="empty">
+          nenhuma conta cadastrada.
         </div>
       `;
 
-    }).join('');
+      return;
+
+    }
+
+
+    list.innerHTML = rows.map(row => `
+
+      <div class="item">
+
+        <strong>
+          ${escapeHTML(row.name)}
+        </strong>
+
+        <span>
+          ${money(row.balance)}
+        </span>
+
+      </div>
+
+    `).join("");
 
   } catch (error) {
 
-    list.innerHTML =
-      `<p>${escapeHtml(error.message)}</p>`;
+    console.error(error);
+
   }
+
 }
 
 
-/* =========================
+/* =========================================================
    CARTÕES
-========================= */
+========================================================= */
 
-function renderCards() {
+async function renderCards() {
 
-  const main = $('#main');
+  $("main").innerHTML = `
 
-  main.innerHTML = `
-
-    <div class="page">
+    <section class="page">
 
       <h1>cartões</h1>
 
-      <div class="panel">
+      <p>
+        acompanhe seus cartões e faturas.
+      </p>
 
-        <form id="cardForm">
+      <form id="cardForm">
 
-          <label>
-            nome do cartão
+        <label>
+          nome do cartão
 
-            <input id="cardName" required>
-          </label>
+          <input
+            id="cardName"
+            required
+          >
 
-          <label>
-            limite
+        </label>
 
-            <input
-              id="cardLimit"
-              type="number"
-              step="0.01"
-              required
-            >
-          </label>
+        <label>
+          limite
 
-          <label>
-            fatura atual
+          <input
+            id="cardLimit"
+            type="number"
+            step="0.01"
+            required
+          >
 
-            <input
-              id="cardBill"
-              type="number"
-              step="0.01"
-              value="0"
-            >
-          </label>
+        </label>
 
-          <label>
-            fechamento
+        <label>
+          fatura atual
 
-            <input
-              id="cardClosing"
-              type="number"
-              min="1"
-              max="31"
-            >
-          </label>
+          <input
+            id="cardBill"
+            type="number"
+            step="0.01"
+            value="0"
+          >
 
-          <label>
-            vencimento
+        </label>
 
-            <input
-              id="cardDue"
-              type="number"
-              min="1"
-              max="31"
-            >
-          </label>
+        <label>
+          fechamento
 
-          <button class="primary">
-            salvar cartão
-          </button>
+          <input
+            id="cardClosing"
+            type="number"
+            min="1"
+            max="31"
+          >
 
-        </form>
+        </label>
 
+        <label>
+          vencimento
+
+          <input
+            id="cardDue"
+            type="number"
+            min="1"
+            max="31"
+          >
+
+        </label>
+
+        <button class="primary">
+          adicionar cartão
+        </button>
+
+      </form>
+
+      <div id="cardList">
+        carregando...
       </div>
 
-      <div class="panel">
+    </section>
 
-        <div id="cardList">
-          carregando...
-        </div>
-
-      </div>
-
-    </div>
   `;
 
-  $('#cardForm').addEventListener(
-    'submit',
-    saveCard
-  );
 
-  loadCards();
+  $("cardForm")
+    .addEventListener("submit", saveCard);
+
+  await loadCards();
+
 }
 
 
@@ -1389,440 +1364,252 @@ async function saveCard(event) {
 
   try {
 
-    await A.create(
-      'cards',
-      {
-        user_id: user.$id,
-        name: $('#cardName').value,
-        credit_limit:
-          Number($('#cardLimit').value),
-        current_bill:
-          Number($('#cardBill').value || 0),
-        closing_day:
-          Number($('#cardClosing').value || 0),
-        due_day:
-          Number($('#cardDue').value || 0)
-      },
-      user.$id
-    );
+    await createRow("cards", {
 
-    toast('cartão salvo');
+      name:
+        $("cardName").value.trim(),
+
+      credit_limit:
+        Number($("cardLimit").value),
+
+      current_bill:
+        Number(
+          $("cardBill").value || 0
+        ),
+
+      closing_day:
+        Number(
+          $("cardClosing").value || 0
+        ),
+
+      due_day:
+        Number(
+          $("cardDue").value || 0
+        )
+
+    });
+
+    toast("cartão adicionado");
 
     event.target.reset();
 
-    loadCards();
+    await loadCards();
 
   } catch (error) {
 
-    toast(error.message);
+    console.error(error);
+
+    toast(
+      error.message ||
+      "não foi possível adicionar o cartão",
+      "error"
+    );
+
   }
+
 }
 
 
 async function loadCards() {
 
-  const list = $('#cardList');
+  const list = $("cardList");
+
+  if (!list) return;
 
   try {
 
-    const rows = await A.list('cards');
+    const rows =
+      await listRows("cards");
 
-    const mine = rows.filter(
-      row => row.data?.user_id === user.$id
-    );
+    if (!rows.length) {
 
-    if (!mine.length) {
-
-      list.innerHTML =
-        '<p>nenhum cartão cadastrado.</p>';
-
-      return;
-    }
-
-    list.innerHTML = mine.map(row => {
-
-      const d = row.data;
-
-      return `
-
-        <div class="transaction">
-
-          <div>
-
-            <strong>
-              ${escapeHtml(d.name)}
-            </strong>
-
-            <small>
-              fatura atual:
-              ${money(Number(d.current_bill) || 0)}
-            </small>
-
-          </div>
-
-          <strong>
-            ${money(Number(d.credit_limit) || 0)}
-          </strong>
-
+      list.innerHTML = `
+        <div class="empty">
+          nenhum cartão cadastrado.
         </div>
       `;
 
-    }).join('');
-
-  } catch (error) {
-
-    list.innerHTML =
-      `<p>${escapeHtml(error.message)}</p>`;
-  }
-}
-
-
-/* =========================
-   CATEGORIAS
-========================= */
-
-function renderCategories() {
-
-  const main = $('#main');
-
-  main.innerHTML = `
-
-    <div class="page">
-
-      <h1>categorias</h1>
-
-      <div class="panel">
-
-        <form id="categoryForm">
-
-          <label>
-            nome
-
-            <input id="categoryName" required>
-          </label>
-
-          <label>
-            ícone
-
-            <input
-              id="categoryIcon"
-              value="◈"
-            >
-          </label>
-
-          <label>
-            limite mensal
-
-            <input
-              id="categoryLimit"
-              type="number"
-              step="0.01"
-              value="0"
-            >
-          </label>
-
-          <button class="primary">
-            salvar categoria
-          </button>
-
-        </form>
-
-      </div>
-
-      <div class="panel">
-
-        <div id="categoryList">
-          carregando...
-        </div>
-
-      </div>
-
-    </div>
-  `;
-
-  $('#categoryForm').addEventListener(
-    'submit',
-    saveCategory
-  );
-
-  loadCategories();
-}
-
-
-async function saveCategory(event) {
-
-  event.preventDefault();
-
-  try {
-
-    await A.create(
-      'categories',
-      {
-        user_id: user.$id,
-        name: $('#categoryName').value,
-        icon:
-          $('#categoryIcon').value || '◈',
-        monthly_limit:
-          Number($('#categoryLimit').value || 0)
-      },
-      user.$id
-    );
-
-    toast('categoria salva');
-
-    event.target.reset();
-
-    loadCategories();
-
-  } catch (error) {
-
-    toast(error.message);
-  }
-}
-
-
-async function loadCategories() {
-
-  const list = $('#categoryList');
-
-  try {
-
-    const rows =
-      await A.list('categories');
-
-    const mine =
-      rows.filter(
-        row =>
-          row.data?.user_id === user.$id
-      );
-
-    if (!mine.length) {
-
-      list.innerHTML =
-        '<p>nenhuma categoria cadastrada.</p>';
-
       return;
+
     }
 
-    list.innerHTML =
-      mine.map(row => {
 
-        const d = row.data;
+    list.innerHTML = rows.map(row => `
 
-        return `
+      <div class="item">
 
-          <div class="transaction">
+        <div>
 
-            <div>
+          <strong>
+            ${escapeHTML(row.name)}
+          </strong>
 
-              <strong>
-                ${escapeHtml(d.icon || '◈')}
-                ${escapeHtml(d.name)}
-              </strong>
+          <small>
+            fatura atual:
+            ${money(row.current_bill)}
+          </small>
 
-              <small>
-                limite:
-                ${money(
-                  Number(d.monthly_limit) || 0
-                )}
-              </small>
-
-            </div>
-
-          </div>
-        `;
-
-      }).join('');
-
-  } catch (error) {
-
-    list.innerHTML =
-      `<p>${escapeHtml(error.message)}</p>`;
-  }
-}
-
-
-/* =========================
-   SALÁRIO
-========================= */
-
-function renderSalary() {
-
-  const main = $('#main');
-
-  main.innerHTML = `
-
-    <div class="page">
-
-      <h1>salário</h1>
-
-      <div class="panel">
-
-        <form id="salaryForm">
-
-          <label>
-            salário bruto
-
-            <input
-              id="salaryGross"
-              type="number"
-              step="0.01"
-            >
-          </label>
-
-          <label>
-            adiantamento %
-
-            <input
-              id="salaryAdvance"
-              type="number"
-              step="0.01"
-            >
-          </label>
-
-          <label>
-            INSS %
-
-            <input
-              id="salaryInss"
-              type="number"
-              step="0.01"
-            >
-          </label>
-
-          <label>
-            assistencial
-
-            <input
-              id="salaryAssist"
-              type="number"
-              step="0.01"
-            >
-          </label>
-
-          <label>
-            seguro de vida
-
-            <input
-              id="salaryLife"
-              type="number"
-              step="0.01"
-            >
-          </label>
-
-          <label>
-            negocial
-
-            <input
-              id="salaryNegocial"
-              type="number"
-              step="0.01"
-            >
-          </label>
-
-          <button class="primary">
-            calcular salário
-          </button>
-
-        </form>
-
-      </div>
-
-      <div class="panel">
-
-        <h2>resultado</h2>
-
-        <div id="salaryResult">
-          preencha os dados.
         </div>
 
+        <span>
+          limite:
+          ${money(row.credit_limit)}
+        </span>
+
       </div>
 
-    </div>
-  `;
-
-  loadSalary();
-
-  $('#salaryForm').addEventListener(
-    'submit',
-    calculateSalary
-  );
-}
-
-
-async function loadSalary() {
-
-  try {
-
-    const rows =
-      await A.list('settings');
-
-    const mine =
-      rows.find(
-        row =>
-          row.data?.user_id === user.$id
-      );
-
-    if (!mine) return;
-
-    const d = mine.data;
-
-    $('#salaryGross').value =
-      d.gross_salary ?? 2759.74;
-
-    $('#salaryAdvance').value =
-      d.advance_pct ?? 40;
-
-    $('#salaryInss').value =
-      d.inss_pct ?? 9;
-
-    $('#salaryAssist').value =
-      d.assist_pct ?? 2;
-
-    $('#salaryLife').value =
-      d.life_insurance ?? 3.82;
-
-    $('#salaryNegocial').value =
-      d.negocial ?? 21;
+    `).join("");
 
   } catch (error) {
 
     console.error(error);
+
   }
+
 }
 
 
-async function calculateSalary(event) {
+/* =========================================================
+   SALÁRIO
+========================================================= */
 
-  event.preventDefault();
+function renderSalary() {
+
+  $("main").innerHTML = `
+
+    <section class="page">
+
+      <h1>salário</h1>
+
+      <p>
+        configure sua remuneração e veja uma estimativa do líquido.
+      </p>
+
+      <div class="salary-card">
+
+        <label>
+          salário bruto
+
+          <input
+            id="salaryGross"
+            type="number"
+            step="0.01"
+            value="2759.74"
+          >
+
+        </label>
+
+        <label>
+          adiantamento %
+
+          <input
+            id="salaryAdvance"
+            type="number"
+            step="0.01"
+            value="40"
+          >
+
+        </label>
+
+        <label>
+          INSS %
+
+          <input
+            id="salaryInss"
+            type="number"
+            step="0.01"
+            value="9"
+          >
+
+        </label>
+
+        <label>
+          assistencial
+
+          <input
+            id="salaryAssist"
+            type="number"
+            step="0.01"
+            value="2"
+          >
+
+        </label>
+
+        <label>
+          seguro de vida
+
+          <input
+            id="salaryLife"
+            type="number"
+            step="0.01"
+            value="3.82"
+          >
+
+        </label>
+
+        <label>
+          negocial
+
+          <input
+            id="salaryNegocial"
+            type="number"
+            step="0.01"
+            value="21"
+          >
+
+        </label>
+
+        <button
+          class="primary"
+          id="calculateSalary"
+        >
+          calcular
+        </button>
+
+      </div>
+
+      <div id="salaryResult"></div>
+
+    </section>
+
+  `;
+
+
+  $("calculateSalary")
+    .addEventListener(
+      "click",
+      calculateSalary
+    );
+
+}
+
+
+function calculateSalary() {
 
   const gross =
-    Number($('#salaryGross').value || 0);
+    Number($("salaryGross").value || 0);
 
   const advancePct =
-    Number($('#salaryAdvance').value || 0);
+    Number($("salaryAdvance").value || 0);
 
   const inssPct =
-    Number($('#salaryInss').value || 0);
+    Number($("salaryInss").value || 0);
 
   const assistPct =
-    Number($('#salaryAssist').value || 0);
+    Number($("salaryAssist").value || 0);
 
   const life =
-    Number($('#salaryLife').value || 0);
+    Number($("salaryLife").value || 0);
 
   const negocial =
-    Number($('#salaryNegocial').value || 0);
+    Number($("salaryNegocial").value || 0);
 
-
-  const advance =
-    gross * advancePct / 100;
 
   const inss =
-    gross * inssPct / 100;
+    gross * (inssPct / 100);
 
   const assist =
-    gross * assistPct / 100;
+    gross * (assistPct / 100);
 
   const liquid =
     gross -
@@ -1832,176 +1619,512 @@ async function calculateSalary(event) {
     negocial;
 
 
-  $('#salaryResult').innerHTML = `
+  const advance =
+    gross * (advancePct / 100);
 
-    <div class="salary-result">
+  const remaining =
+    liquid - advance;
 
-      <p>
-        salário bruto
+
+  $("salaryResult").innerHTML = `
+
+    <div class="cards">
+
+      <div class="card">
+        <small>bruto</small>
         <strong>
           ${money(gross)}
         </strong>
-      </p>
+      </div>
 
-      <p>
-        adiantamento
-        <strong>
-          ${money(advance)}
-        </strong>
-      </p>
-
-      <p>
-        INSS
+      <div class="card">
+        <small>INSS</small>
         <strong>
           ${money(inss)}
         </strong>
-      </p>
+      </div>
 
-      <p>
-        assistencial
+      <div class="card">
+        <small>adiantamento</small>
         <strong>
-          ${money(assist)}
+          ${money(advance)}
         </strong>
-      </p>
+      </div>
 
-      <p>
-        seguro de vida
-        <strong>
-          ${money(life)}
-        </strong>
-      </p>
-
-      <p>
-        negocial
-        <strong>
-          ${money(negocial)}
-        </strong>
-      </p>
-
-      <hr>
-
-      <p>
-        salário líquido estimado
+      <div class="card">
+        <small>líquido estimado</small>
         <strong>
           ${money(liquid)}
         </strong>
-      </p>
+      </div>
+
+      <div class="card">
+        <small>restante</small>
+        <strong>
+          ${money(remaining)}
+        </strong>
+      </div>
 
     </div>
+
+  `;
+
+}
+
+
+/* =========================================================
+   CATEGORIAS
+========================================================= */
+
+async function renderCategories() {
+
+  $("main").innerHTML = `
+
+    <section class="page">
+
+      <h1>categorias</h1>
+
+      <p>
+        organize seus gastos por categoria.
+      </p>
+
+      <form id="categoryForm">
+
+        <label>
+          nome
+
+          <input
+            id="categoryName"
+            required
+          >
+
+        </label>
+
+        <label>
+          ícone
+
+          <input
+            id="categoryIcon"
+            value="◈"
+          >
+
+        </label>
+
+        <label>
+          limite mensal
+
+          <input
+            id="categoryLimit"
+            type="number"
+            min="0"
+            step="0.01"
+            value="0"
+          >
+
+        </label>
+
+        <button class="primary">
+          adicionar categoria
+        </button>
+
+      </form>
+
+      <div id="categoryList">
+        carregando...
+      </div>
+
+    </section>
+
   `;
 
 
+  $("categoryForm")
+    .addEventListener(
+      "submit",
+      saveCategory
+    );
+
+  await loadCategories();
+
+}
+
+
+async function saveCategory(event) {
+
+  event.preventDefault();
+
   try {
 
-    const rows =
-      await A.list('settings');
+    await createRow("categories", {
 
-    const mine =
-      rows.find(
-        row =>
-          row.data?.user_id === user.$id
-      );
+      name:
+        $("categoryName")
+          .value
+          .trim(),
 
-    const data = {
-      user_id: user.$id,
-      gross_salary: gross,
-      advance_pct: advancePct,
-      inss_pct: inssPct,
-      assist_pct: assistPct,
-      life_insurance: life,
-      negocial
-    };
+      icon:
+        $("categoryIcon")
+          .value
+          .trim(),
 
-    if (mine) {
+      monthly_limit:
+        Number(
+          $("categoryLimit")
+            .value || 0
+        )
 
-      await A.update(
-        'settings',
-        mine.$id,
-        data
-      );
+    });
 
-    } else {
+    toast("categoria criada");
 
-      await A.create(
-        'settings',
-        data,
-        user.$id
-      );
-    }
+    event.target.reset();
 
-    toast('salário atualizado');
+    await loadCategories();
 
   } catch (error) {
 
     console.error(error);
 
     toast(
-      'resultado calculado, mas não foi possível salvar.'
+      error.message ||
+      "não foi possível criar a categoria",
+      "error"
     );
+
   }
+
 }
 
 
-/* =========================
-   BILLS
-========================= */
+async function loadCategories() {
 
-async function loadBills() {
+  const list =
+    $("categoryList");
+
+  if (!list) return;
 
   try {
 
-    return await A.list('bills');
+    const rows =
+      await listRows(
+        "categories"
+      );
+
+    if (!rows.length) {
+
+      list.innerHTML = `
+        <div class="empty">
+          nenhuma categoria cadastrada.
+        </div>
+      `;
+
+      return;
+
+    }
+
+
+    list.innerHTML =
+      rows.map(row => `
+
+        <div class="item">
+
+          <span>
+
+            ${escapeHTML(
+              row.icon
+            )}
+
+            ${escapeHTML(
+              row.name
+            )}
+
+          </span>
+
+          <strong>
+            ${money(
+              row.monthly_limit
+            )}
+          </strong>
+
+        </div>
+
+      `).join("");
 
   } catch (error) {
 
     console.error(error);
 
-    return [];
   }
+
 }
 
 
-/* =========================
+/* =========================================================
+   UTILITÁRIOS
+========================================================= */
+
+function money(value) {
+
+  return Number(value || 0)
+    .toLocaleString(
+      "pt-BR",
+      {
+        style: "currency",
+        currency: "BRL"
+      }
+    );
+
+}
+
+
+function formatDate(date) {
+
+  if (!date) return "";
+
+  const parts =
+    String(date)
+      .split("-");
+
+  if (parts.length !== 3) {
+    return date;
+  }
+
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+
+}
+
+
+function escapeHTML(value) {
+
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+}
+
+
+/* =========================================================
+   TEMA
+========================================================= */
+
+function setupTheme() {
+
+  const button = $("theme");
+
+  if (!button) return;
+
+  const saved =
+    localStorage.getItem(
+      "makaria-theme"
+    );
+
+  if (saved === "dark") {
+
+    document.body.classList.add(
+      "dark"
+    );
+
+  }
+
+
+  button.addEventListener(
+    "click",
+    () => {
+
+      document.body.classList.toggle(
+        "dark"
+      );
+
+      localStorage.setItem(
+        "makaria-theme",
+
+        document.body.classList.contains(
+          "dark"
+        )
+          ? "dark"
+          : "light"
+      );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   AUTH FORM
+========================================================= */
+
+function setupAuth() {
+
+  const tabs =
+    document.querySelectorAll(
+      ".tabs button"
+    );
+
+  const nameBox =
+    $("nameBox");
+
+  const button =
+    $("authBtn");
+
+  let mode = "login";
+
+
+  tabs.forEach(tab => {
+
+    tab.addEventListener(
+      "click",
+      () => {
+
+        tabs.forEach(t =>
+          t.classList.remove(
+            "active"
+          )
+        );
+
+        tab.classList.add(
+          "active"
+        );
+
+        mode =
+          tab.dataset.mode;
+
+        if (mode === "signup") {
+
+          nameBox.classList.remove(
+            "hide"
+          );
+
+          button.textContent =
+            "Criar conta";
+
+        } else {
+
+          nameBox.classList.add(
+            "hide"
+          );
+
+          button.textContent =
+            "Entrar";
+
+        }
+
+        $("authMsg").textContent =
+          "";
+
+      }
+    );
+
+  });
+
+
+  $("authForm")
+    .addEventListener(
+      "submit",
+      async event => {
+
+        event.preventDefault();
+
+        const email =
+          $("email").value.trim();
+
+        const password =
+          $("pass").value;
+
+        if (mode === "signup") {
+
+          const name =
+            $("name")
+              .value
+              .trim();
+
+          if (!name) {
+
+            toast(
+              "informe seu nome",
+              "error"
+            );
+
+            return;
+
+          }
+
+          await signup(
+            name,
+            email,
+            password
+          );
+
+        } else {
+
+          await login(
+            email,
+            password
+          );
+
+        }
+
+      }
+    );
+
+}
+
+
+/* =========================================================
+   LOGOUT
+========================================================= */
+
+function setupLogout() {
+
+  $("logout")
+    ?.addEventListener(
+      "click",
+      logout
+    );
+
+}
+
+
+/* =========================================================
    INICIALIZAÇÃO
-========================= */
+========================================================= */
 
-async function startApp() {
+async function init() {
 
-  const hello = $('#hello');
+  setupAuth();
 
-  if (hello) {
+  setupNavigation();
 
-    hello.textContent =
-      `olá, ${user?.name || 'Mirela'}`;
-  }
+  setupTheme();
 
-  renderHome();
-}
+  setupLogout();
 
 
-(async function init() {
+  currentUser =
+    await getUser();
 
-  loadTheme();
 
-  try {
-
-    user = await A.me();
-
-    await ensureProfile();
-
-    await ensureSettings();
+  if (currentUser) {
 
     showApp();
 
-    await startApp();
+  } else {
 
-  } catch (error) {
+    $("app")
+      .classList
+      .add("hide");
 
-    console.log(
-      'nenhuma sessão ativa.'
-    );
+    $("auth")
+      .classList
+      .remove("hide");
 
-    showAuth();
   }
 
-})();
+}
+
+
+init();
