@@ -1,25 +1,2007 @@
-const C={endpoint:'https://nyc.cloud.appwrite.io/v1',projectId:'6b01e299000b19ac36ce',databaseId:'6b01e350001ca47807e5',tables:{profiles:'COLE_ID_PROFILES',settings:'COLE_ID_SETTINGS',transactions:'COLE_ID_TRANSACTIONS',goals:'COLE_ID_GOALS',accounts:'COLE_ID_ACCOUNTS',categories:'COLE_ID_CATEGORIES',bills:'COLE_ID_BILLS',cards:'COLE_ID_CARDS'}};
-const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)], money=v=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(+v||0), esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[x]));
-async function api(path,opt={}){const r=await fetch(C.endpoint+path,{credentials:'include',headers:{'X-Appwrite-Project':C.projectId,'Content-Type':'application/json',...(opt.headers||{})},...opt});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message||`Appwrite ${r.status}`);return j}
-const A={me:()=>api('/account'),login:(e,p)=>api('/account/sessions/email',{method:'POST',body:JSON.stringify({email:e,password:p})}),signup:(n,e,p)=>api('/account',{method:'POST',body:JSON.stringify({userId:'unique()',email:e,password:p,name:n})}),logout:()=>api('/account/sessions/current',{method:'DELETE'}),row:(t,id)=>api(`/databases/${C.databaseId}/tables/${C.tables[t]}/rows/${id}`),list:async t=>(await api(`/databases/${C.databaseId}/tables/${C.tables[t]}/rows?limit=100`)).rows||[],create:(t,data)=>api(`/databases/${C.databaseId}/tables/${C.tables[t]}/rows`,{method:'POST',body:JSON.stringify({rowId:'unique()',data})}),update:(t,id,data)=>api(`/databases/${C.databaseId}/tables/${C.tables[t]}/rows/${id}`,{method:'PATCH',body:JSON.stringify({data})}),del:(t,id)=>api(`/databases/${C.databaseId}/tables/${C.tables[t]}/rows/${id}`,{method:'DELETE'})};
-let user=null,data={transactions:[],goals:[],accounts:[],cards:[],categories:[],settings:null},mode='login';
-function toast(s){let t=$('#toast');t.textContent=s;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}function showAuth(v){$('#auth').classList.toggle('hide',!v);$('#app').classList.toggle('hide',v)}
-async function load(){for(const k of ['transactions','goals','accounts','cards','categories']){try{data[k]=(await A.list(k)).filter(x=>x.data?.user_id===user.$id).map(x=>({...x,...x.data}))}catch(e){data[k]=[]}}try{let s=(await A.list('settings')).find(x=>x.data?.user_id===user.$id);data.settings=s?{...s,...s.data}:null}catch(e){data.settings=null}}
-async function profile(){try{await A.row('profiles',user.$id)}catch(e){if(e.message.includes('not found'))await A.create('profiles',{full_name:user.name||'',email:user.email,avatar_url:'' ,user_id:user.$id})}}
-function totals(){let income=0,expense=0,invest=0;data.transactions.forEach(x=>{if(x.type==='income')income+=+x.amount;if(x.type==='expense')expense+=+x.amount;if(x.type==='investment')invest+=+x.amount});return{income,expense,invest,balance:income-expense-invest}}
-function head(k,t,s,btn=''){return `<div class="headrow"><div><div class="eyebrow">${k}</div><div class="page-title">${t}</div><div class="sub">${s}</div></div>${btn?`<button class="btn olive" id="new">${btn}</button>`:''}</div>`}
-function home(){let t=totals(),months=[...Array(6)].map((_,i)=>{let d=new Date();d.setMonth(d.getMonth()-5+i);return d}),vals=months.map(d=>data.transactions.filter(x=>x.type==='expense'&&new Date(x.transaction_date+'T12:00:00').getMonth()===d.getMonth()&&new Date(x.transaction_date+'T12:00:00').getFullYear()===d.getFullYear()).reduce((a,x)=>a+ +x.amount,0)),mx=Math.max(...vals,1);return head('Visão geral',`Olá, ${esc(user.name||user.email.split('@')[0])}.`,'Acompanhe sua vida financeira com clareza.')+`<div class="cards"><div class="metric"><label>Saldo disponível</label><strong class="${t.balance>=0?'green':'red'}">${money(t.balance)}</strong></div><div class="metric"><label>Entradas</label><strong class="green">${money(t.income)}</strong></div><div class="metric"><label>Gastos</label><strong class="red">${money(t.expense)}</strong></div><div class="metric"><label>Investimentos</label><strong class="olive">${money(t.invest)}</strong></div></div><div class="grid"><div class="panel"><h3>Evolução dos gastos</h3><div class="chart">${vals.map((v,i)=>`<div class="bar" style="height:${Math.max(5,v/mx*100)}%"><i>${money(v)}</i></div>`).join('')}</div><div class="months">${months.map(d=>`<span>${d.toLocaleDateString('pt-BR',{month:'short'}).replace('.','')}</span>`).join('')}</div></div><div class="panel"><h3>Últimas transações</h3><div class="list">${data.transactions.slice(0,5).map(x=>`<div class="row"><div><b>${esc(x.description||x.category)}</b><div class="muted">${esc(x.category)} · ${esc(x.transaction_date)}</div></div><b class="${x.type==='expense'?'red':'green'}">${x.type==='expense'?'−':'＋'} ${money(x.amount)}</b></div>`).join('')||'<div class="empty">Nenhuma transação ainda.</div>'}</div></div></div>`}
-function transactions(){return head('Movimentações','Transações','Registre tudo que entra e sai.','+ Nova transação')+`<div class="panel"><div class="list">${data.transactions.map(x=>`<div class="row"><div><b>${esc(x.description||x.category)}</b><div class="muted">${esc(x.category)} · ${esc(x.transaction_date)} · ${esc(x.payment_method)}</div></div><div><b class="${x.type==='expense'?'red':'green'}">${x.type==='expense'?'−':'＋'} ${money(x.amount)}</b> <button class="btn" data-del="transactions" data-id="${x.$id}">Excluir</button></div></div>`).join('')||'<div class="empty">Nenhuma transação.</div>'}</div></div>`}
-function goals(){return head('Planejamento','Metas','Transforme objetivos em progresso mensurável.','+ Nova meta')+`<div class="grid">${data.goals.map(x=>{let p=x.target?Math.min(100,+x.saved/+x.target*100):0;return `<div class="panel"><b>${esc(x.name)}</b><div class="muted">${money(x.saved)} de ${money(x.target)}</div><div class="progress"><i style="width:${p}%"></i></div><div class="actions"><button class="btn" data-del="goals" data-id="${x.$id}">Excluir</button></div></div>`}).join('')||'<div class="panel empty">Nenhuma meta cadastrada.</div>'}</div>`}
-function accounts(){return simple('accounts','Contas','Organize seus saldos e contas.','+ Nova conta')}function cards(){return simple('cards','Cartões','Acompanhe limite e fatura.','+ Novo cartão')}function simple(k,t,s,b){return head('Organização',t,s,b)+`<div class="panel"><div class="list">${data[k].map(x=>`<div class="row"><div><b>${esc(x.name)}</b><div class="muted">${k==='cards'?`Limite ${money(x.limit)} · Fatura ${money(x.bill)}`:`Vencimento dia ${x.due_day||'—'}`}</div></div><b>${money(x.value||0)}</b><button class="btn" data-del="${k}" data-id="${x.$id}">Excluir</button></div>`).join('')||'<div class="empty">Nenhum item cadastrado.</div>'}</div></div>`}
-function salary(){let s=data.settings||{gross_salary:0,advance_pct:40,inss_pct:9,assist_pct:2,life_insurance:0,negocial:0},g=+s.gross_salary,ad=g*+s.advance_pct/100,li=g-g*+s.inss_pct/100-g*+s.assist_pct/100-+s.life_insurance-+s.negocial;return head('Planejamento','Salário','Regras editáveis e cálculo automático.')+`<div class="grid"><div class="panel"><div class="form"><label>Salário bruto<input id="gross" type="number" step=".01" value="${g}"></label><label>Adiantamento %<input id="adv" type="number" step=".01" value="${s.advance_pct}"></label><label>INSS %<input id="inss" type="number" step=".01" value="${s.inss_pct}"></label><label>Assistencial %<input id="assist" type="number" step=".01" value="${s.assist_pct}"></label><label>Seguro de vida<input id="life" type="number" step=".01" value="${s.life_insurance}"></label><label>Negocial V.A.<input id="neg" type="number" step=".01" value="${s.negocial}"></label></div><div class="actions"><button class="btn olive" id="saveSalary">Salvar salário</button></div></div><div class="panel"><h3>Simulação</h3><div class="list"><div class="row"><span>Bruto</span><b>${money(g)}</b></div><div class="row"><span>INSS</span><b class="red">− ${money(g*+s.inss_pct/100)}</b></div><div class="row"><span>Assistencial</span><b class="red">− ${money(g*+s.assist_pct/100)}</b></div><div class="row"><span>Seguro</span><b class="red">− ${money(s.life_insurance)}</b></div><div class="row"><span>Negocial</span><b class="red">− ${money(s.negocial)}</b></div><div class="row"><span>Líquido</span><b class="green">${money(li)}</b></div><div class="row"><span>Adiantamento</span><b>${money(ad)}</b></div><div class="row"><span>Restante</span><b>${money(li-ad)}</b></div></div></div></div>`}
-function categories(){return head('Organização','Categorias','Defina limites mensais.','+ Nova categoria')+`<div class="cards">${data.categories.map(x=>{let spent=data.transactions.filter(t=>t.type==='expense'&&t.category===x.name).reduce((a,t)=>a+ +t.amount,0),p=x.monthly_limit?spent/+x.monthly_limit*100:0;return `<div class="metric"><div><b>${esc(x.icon||'◈')} ${esc(x.name)}</b></div><strong class="${p>=100?'red':p>=70?'olive':'green'}">${money(spent)}</strong><div class="muted">limite ${money(x.monthly_limit)}</div><div class="progress"><i style="width:${Math.min(100,p)}%;background:${p>=100?'#bb514a':p>=90?'#d59a31':'#60764c'}"></i></div><div class="actions"><button class="btn" data-del="categories" data-id="${x.$id}">Excluir</button></div></div>`}).join('')||'<div class="metric empty">Nenhuma categoria personalizada.</div>'}</div>`}
-function modal(title,body,save){let d=document.createElement('div');d.className='modal';d.innerHTML=`<div class="shade"></div><div class="modalbox"><h3>${title}</h3><form>${body}<div class="actions"><button class="btn olive">Salvar</button></div></form></div>`;document.body.append(d);d.querySelector('.shade').onclick=()=>d.remove();d.querySelector('form').onsubmit=async e=>{e.preventDefault();try{await save(new FormData(e.target));d.remove();await load();render(currentPage);toast('Salvo com sucesso.')}catch(err){toast(err.message)}}}
-function openTx(){modal('Nova transação',`<div class="form"><label>Tipo<select name="type"><option value="expense">Gasto</option><option value="income">Entrada</option><option value="investment">Investimento</option></select></label><label>Valor<input name="amount" type="number" step=".01" required></label><label>Categoria<input name="category" required placeholder="Alimentação"></label><label>Data<input name="transaction_date" type="date" required value="${new Date().toISOString().slice(0,10)}"></label><label>Forma de pagamento<input name="payment_method" placeholder="Pix, cartão..."></label><label>Descrição<input name="description"></label></div>`,f=>A.create('transactions',{user_id:user.$id,type:f.get('type'),amount:+f.get('amount'),category:f.get('category'),description:f.get('description'),transaction_date:f.get('transaction_date'),payment_method:f.get('payment_method'),installments:1,installment_number:1}))}
-function openGoal(){modal('Nova meta',`<label>Nome<input name="name" required></label><label>Valor objetivo<input name="target" type="number" step=".01" required></label><label>Já guardado<input name="saved" type="number" step=".01" value="0"></label>`,f=>A.create('goals',{user_id:user.$id,name:f.get('name'),target:+f.get('target'),saved:+f.get('saved')}))}
-function openItem(k){modal(k==='accounts'?'Nova conta':'Novo cartão',`<label>Nome<input name="name" required></label><label>Valor<input name="value" type="number" step=".01" value="0"></label>${k==='accounts'?'<label>Dia de vencimento<input name="due_day" type="number"></label>':'<label>Limite<input name="limit" type="number" step=".01"></label><label>Fatura atual<input name="bill" type="number" step=".01" value="0"></label>'}`,f=>A.create(k,{user_id:user.$id,name:f.get('name'),value:+f.get('value'),...(k==='accounts'?{due_day:+f.get('due_day')||0}:{limit:+f.get('limit')||0,bill:+f.get('bill')||0})))}
-function openCat(){modal('Nova categoria',`<label>Nome<input name="name" required></label><label>Ícone<input name="icon" value="◈"></label><label>Limite mensal<input name="monthly_limit" type="number" step=".01" value="0"></label>`,f=>A.create('categories',{user_id:user.$id,name:f.get('name'),icon:f.get('icon'),monthly_limit:+f.get('monthly_limit')}))}
-let currentPage='home';function render(p){currentPage=p;$$('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));$('#main').innerHTML={home,transactions,goals,accounts,cards,salary,categories}[p]();$('#new')?.addEventListener('click',()=>p==='transactions'?openTx():p==='goals'?openGoal():p==='accounts'?openItem('accounts'):p==='cards'?openItem('cards'):openCat());$('#saveSalary')?.addEventListener('click',saveSalary);$$('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Excluir este item?')){await A.del(b.dataset.del,b.dataset.id);await load();render(currentPage)}})}
-async function saveSalary(){let o={user_id:user.$id,gross_salary:+$('#gross').value,advance_pct:+$('#adv').value,inss_pct:+$('#inss').value,assist_pct:+$('#assist').value,life_insurance:+$('#life').value,negocial:+$('#neg').value};try{if(data.settings)await A.update('settings',data.settings.$id,o);else await A.create('settings',o);await load();render('salary');toast('Salário salvo.')}catch(e){toast(e.message)}}
-$$('nav button').forEach(b=>b.onclick=()=>render(b.dataset.page));$$('.tabs button').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;$$('.tabs button').forEach(x=>x.classList.toggle('active',x===b));$('#nameBox').classList.toggle('hide',mode!=='signup');$('#authBtn').textContent=mode==='signup'?'Criar conta':'Entrar';$('#authMsg').textContent='' });$('#theme').onclick=()=>document.body.classList.toggle('dark');$('#logout').onclick=async()=>{await A.logout();location.reload()};$('#authForm').onsubmit=async e=>{e.preventDefault();$('#authMsg').textContent='';try{if(mode==='signup')await A.signup($('#name').value,$('#email').value,$('#pass').value);await A.login($('#email').value,$('#pass').value);user=await A.me();await profile();showAuth(false);$('#hello').textContent=user.name||user.email;await load();render('home')}catch(err){$('#authMsg').textContent=err.message}};
-(async()=>{try{user=await A.me();showAuth(false);$('#hello').textContent=user.name||user.email;await load();render('home')}catch(e){showAuth(true)}})();
+const C = {
+  endpoint: 'https://nyc.cloud.appwrite.io/v1',
+  projectId: '6b01e299000b19ac36ce',
+  databaseId: '6b01e350001ca47807e5',
+
+  tables: {
+    profiles: 'profiles',
+    settings: '6b01e569002a228a1c5b',
+    transactions: '6b01e6aa0036b4223488',
+    goals: '6b01e8700035f839daea',
+    accounts: '6b01fc9a00179915f55c',
+    categories: '6b01fd500025ac427542',
+    bills: '6b01fdb800341288b640',
+    cards: '6b020079002ad9473ae5'
+  }
+};
+
+
+/* =========================
+   APPWRITE
+========================= */
+
+async function api(path, options = {}) {
+  const response = await fetch(C.endpoint + path, {
+    method: options.method || 'GET',
+    credentials: 'include',
+    headers: {
+      'X-Appwrite-Project': C.projectId,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    },
+    body: options.body
+  });
+
+  let data = {};
+
+  try {
+    data = await response.json();
+  } catch (_) {}
+
+  if (!response.ok) {
+    throw new Error(
+      data?.message ||
+      `Erro ${response.status} ao acessar o Appwrite`
+    );
+  }
+
+  return data;
+}
+
+
+/* =========================
+   APPWRITE AUTH
+========================= */
+
+const A = {
+
+  me() {
+    return api('/account');
+  },
+
+  login(email, password) {
+    return api('/account/sessions/email', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        password
+      })
+    });
+  },
+
+  signup(name, email, password) {
+    return api('/account', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: 'unique()',
+        email,
+        password,
+        name
+      })
+    });
+  },
+
+  logout() {
+    return api('/account/sessions/current', {
+      method: 'DELETE'
+    });
+  },
+
+
+  /* =========================
+     TABLES
+  ========================= */
+
+  async list(table) {
+    const result = await api(
+      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows?limit=100`
+    );
+
+    return result.rows || [];
+  },
+
+
+  async create(table, data, userId) {
+
+    const permissions = [
+      `read("user:${userId}")`,
+      `update("user:${userId}")`,
+      `delete("user:${userId}")`
+    ];
+
+    return api(
+      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          rowId: 'unique()',
+          data,
+          permissions
+        })
+      }
+    );
+  },
+
+
+  update(table, rowId, data) {
+
+    return api(
+      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows/${rowId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          data
+        })
+      }
+    );
+  },
+
+
+  delete(table, rowId) {
+
+    return api(
+      `/databases/${C.databaseId}/tables/${C.tables[table]}/rows/${rowId}`,
+      {
+        method: 'DELETE'
+      }
+    );
+  }
+};
+
+
+/* =========================
+   ELEMENTOS
+========================= */
+
+const $ = selector => document.querySelector(selector);
+
+const auth = $('#auth');
+const app = $('#app');
+const authForm = $('#authForm');
+const authBtn = $('#authBtn');
+const authMsg = $('#authMsg');
+const nameBox = $('#nameBox');
+const nameInput = $('#name');
+const emailInput = $('#email');
+const passInput = $('#pass');
+
+
+/* =========================
+   ESTADO
+========================= */
+
+let user = null;
+let mode = 'login';
+
+
+/* =========================
+   TOAST
+========================= */
+
+function toast(message) {
+
+  const el = $('#toast');
+
+  if (!el) return;
+
+  el.textContent = message;
+  el.classList.add('show');
+
+  setTimeout(() => {
+    el.classList.remove('show');
+  }, 3000);
+}
+
+
+/* =========================
+   AUTH VISUAL
+========================= */
+
+function showAuth() {
+
+  auth?.classList.remove('hide');
+  app?.classList.add('hide');
+}
+
+
+function showApp() {
+
+  auth?.classList.add('hide');
+  app?.classList.remove('hide');
+}
+
+
+/* =========================
+   TABS LOGIN / CADASTRO
+========================= */
+
+document.querySelectorAll('[data-mode]').forEach(button => {
+
+  button.addEventListener('click', () => {
+
+    mode = button.dataset.mode;
+
+    document
+      .querySelectorAll('[data-mode]')
+      .forEach(btn => btn.classList.remove('active'));
+
+    button.classList.add('active');
+
+    if (mode === 'signup') {
+
+      nameBox?.classList.remove('hide');
+
+      authBtn.textContent = 'Criar conta';
+
+      nameInput.required = true;
+
+    } else {
+
+      nameBox?.classList.add('hide');
+
+      authBtn.textContent = 'Entrar';
+
+      nameInput.required = false;
+    }
+
+    if (authMsg) {
+      authMsg.textContent = '';
+    }
+  });
+});
+
+
+/* =========================
+   LOGIN / CADASTRO
+========================= */
+
+authForm?.addEventListener('submit', async event => {
+
+  event.preventDefault();
+
+  const email = emailInput.value.trim();
+  const password = passInput.value;
+  const name = nameInput?.value.trim() || '';
+
+  authBtn.disabled = true;
+
+  authMsg.textContent = 'aguarde...';
+
+  try {
+
+    if (mode === 'signup') {
+
+      if (!name) {
+        throw new Error('Digite seu nome completo.');
+      }
+
+      await A.signup(name, email, password);
+
+      /*
+       * Depois de criar a conta,
+       * fazemos login automaticamente.
+       */
+
+      await A.login(email, password);
+
+      user = await A.me();
+
+      await createInitialProfile();
+
+      await createInitialSettings();
+
+      toast('conta criada com sucesso');
+
+    } else {
+
+      await A.login(email, password);
+
+      user = await A.me();
+
+      await ensureProfile();
+
+      await ensureSettings();
+
+      toast('login realizado');
+
+    }
+
+    showApp();
+
+    await startApp();
+
+  } catch (error) {
+
+    console.error(error);
+
+    authMsg.textContent =
+      error.message || 'não foi possível continuar.';
+
+  } finally {
+
+    authBtn.disabled = false;
+  }
+});
+
+
+/* =========================
+   PROFILE
+========================= */
+
+async function createInitialProfile() {
+
+  if (!user) return;
+
+  try {
+
+    await A.create(
+      'profiles',
+      {
+        full_name: user.name || nameInput.value.trim(),
+        email: user.email,
+        avatar_url: ''
+      },
+      user.$id
+    );
+
+  } catch (error) {
+
+    console.warn('perfil não criado:', error.message);
+  }
+}
+
+
+async function ensureProfile() {
+
+  try {
+
+    const rows = await A.list('profiles');
+
+    const mine = rows.find(
+      row => row.data?.email === user.email
+    );
+
+    if (!mine) {
+      await createInitialProfile();
+    }
+
+  } catch (error) {
+
+    console.warn('não foi possível verificar perfil:', error.message);
+  }
+}
+
+
+/* =========================
+   SETTINGS
+========================= */
+
+async function createInitialSettings() {
+
+  if (!user) return;
+
+  try {
+
+    await A.create(
+      'settings',
+      {
+        user_id: user.$id,
+        gross_salary: 2759.74,
+        advance_pct: 40,
+        inss_pct: 9,
+        assist_pct: 2,
+        life_insurance: 3.82,
+        negocial: 21
+      },
+      user.$id
+    );
+
+  } catch (error) {
+
+    console.warn('configuração inicial não criada:', error.message);
+  }
+}
+
+
+async function ensureSettings() {
+
+  try {
+
+    const rows = await A.list('settings');
+
+    const mine = rows.find(
+      row => row.data?.user_id === user.$id
+    );
+
+    if (!mine) {
+      await createInitialSettings();
+    }
+
+  } catch (error) {
+
+    console.warn(
+      'não foi possível verificar configurações:',
+      error.message
+    );
+  }
+}
+
+
+/* =========================
+   LOGOUT
+========================= */
+
+$('#logout')?.addEventListener('click', async () => {
+
+  try {
+
+    await A.logout();
+
+  } catch (error) {
+
+    console.warn(error);
+
+  } finally {
+
+    user = null;
+
+    showAuth();
+
+    toast('sessão encerrada');
+  }
+});
+
+
+/* =========================
+   TEMA
+========================= */
+
+$('#theme')?.addEventListener('click', () => {
+
+  document.body.classList.toggle('dark');
+
+  const dark =
+    document.body.classList.contains('dark');
+
+  localStorage.setItem(
+    'makaria-theme',
+    dark ? 'dark' : 'light'
+  );
+});
+
+
+function loadTheme() {
+
+  const theme =
+    localStorage.getItem('makaria-theme');
+
+  if (theme === 'dark') {
+    document.body.classList.add('dark');
+  }
+}
+
+
+/* =========================
+   NAVEGAÇÃO
+========================= */
+
+document.querySelectorAll('[data-page]').forEach(button => {
+
+  button.addEventListener('click', () => {
+
+    document
+      .querySelectorAll('[data-page]')
+      .forEach(btn => btn.classList.remove('active'));
+
+    button.classList.add('active');
+
+    renderPage(button.dataset.page);
+  });
+});
+
+
+/* =========================
+   PÁGINAS
+========================= */
+
+async function renderPage(page) {
+
+  const main = $('#main');
+
+  if (!main) return;
+
+  if (page === 'home') {
+
+    renderHome();
+    return;
+  }
+
+  if (page === 'transactions') {
+
+    renderTransactions();
+    return;
+  }
+
+  if (page === 'goals') {
+
+    renderGoals();
+    return;
+  }
+
+  if (page === 'accounts') {
+
+    renderAccounts();
+    return;
+  }
+
+  if (page === 'cards') {
+
+    renderCards();
+    return;
+  }
+
+  if (page === 'salary') {
+
+    renderSalary();
+    return;
+  }
+
+  if (page === 'categories') {
+
+    renderCategories();
+    return;
+  }
+}
+
+
+/* =========================
+   HOME
+========================= */
+
+function renderHome() {
+
+  const main = $('#main');
+
+  main.innerHTML = `
+
+    <div class="page">
+
+      <div class="page-title">
+
+        <div>
+          <h1>visão geral</h1>
+
+          <p>
+            acompanhe sua vida financeira.
+          </p>
+        </div>
+
+      </div>
+
+
+      <div class="cards">
+
+        <div class="card">
+          <small>saldo disponível</small>
+          <strong id="homeBalance">
+            R$ 0,00
+          </strong>
+        </div>
+
+        <div class="card">
+          <small>entradas</small>
+          <strong id="homeIncome">
+            R$ 0,00
+          </strong>
+        </div>
+
+        <div class="card">
+          <small>gastos</small>
+          <strong id="homeExpense">
+            R$ 0,00
+          </strong>
+        </div>
+
+        <div class="card">
+          <small>investimentos</small>
+          <strong id="homeInvestment">
+            R$ 0,00
+          </strong>
+        </div>
+
+      </div>
+
+
+      <div class="panel">
+
+        <h2>bem-vinda à makaria</h2>
+
+        <p>
+          organize seu dinheiro com propósito,
+          acompanhe suas metas e construa sua
+          prosperidade.
+        </p>
+
+      </div>
+
+    </div>
+  `;
+
+  loadHomeData();
+}
+
+
+async function loadHomeData() {
+
+  try {
+
+    const rows = await A.list('transactions');
+
+    const mine = rows.filter(
+      row => row.data?.user_id === user.$id
+    );
+
+    let income = 0;
+    let expense = 0;
+    let investment = 0;
+
+    mine.forEach(row => {
+
+      const amount =
+        Number(row.data.amount) || 0;
+
+      const type =
+        row.data.type;
+
+      if (type === 'income') {
+
+        income += amount;
+
+      } else if (type === 'expense') {
+
+        expense += amount;
+
+      } else if (type === 'investment') {
+
+        investment += amount;
+
+      }
+
+    });
+
+    const balance =
+      income - expense - investment;
+
+    $('#homeBalance').textContent =
+      money(balance);
+
+    $('#homeIncome').textContent =
+      money(income);
+
+    $('#homeExpense').textContent =
+      money(expense);
+
+    $('#homeInvestment').textContent =
+      money(investment);
+
+  } catch (error) {
+
+    console.error(error);
+
+  }
+}
+
+
+/* =========================
+   TRANSAÇÕES
+========================= */
+
+function renderTransactions() {
+
+  const main = $('#main');
+
+  main.innerHTML = `
+
+    <div class="page">
+
+      <div class="page-title">
+
+        <div>
+          <h1>transações</h1>
+          <p>
+            registre suas entradas, gastos e investimentos.
+          </p>
+        </div>
+
+      </div>
+
+
+      <div class="panel">
+
+        <form id="transactionForm">
+
+          <label>
+            tipo
+
+            <select id="transactionType">
+
+              <option value="income">
+                entrada
+              </option>
+
+              <option value="expense">
+                gasto
+              </option>
+
+              <option value="investment">
+                investimento
+              </option>
+
+            </select>
+
+          </label>
+
+
+          <label>
+            valor
+
+            <input
+              id="transactionAmount"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+            >
+
+          </label>
+
+
+          <label>
+            categoria
+
+            <input
+              id="transactionCategory"
+              required
+            >
+
+          </label>
+
+
+          <label>
+            descrição
+
+            <input
+              id="transactionDescription"
+            >
+
+          </label>
+
+
+          <label>
+            data
+
+            <input
+              id="transactionDate"
+              type="date"
+              required
+            >
+
+          </label>
+
+
+          <label>
+            forma de pagamento
+
+            <input
+              id="transactionPayment"
+            >
+
+          </label>
+
+
+          <button class="primary">
+            salvar transação
+          </button>
+
+        </form>
+
+      </div>
+
+
+      <div class="panel">
+
+        <h2>últimas transações</h2>
+
+        <div id="transactionList">
+          carregando...
+        </div>
+
+      </div>
+
+    </div>
+  `;
+
+
+  $('#transactionDate').value =
+    new Date().toISOString().slice(0, 10);
+
+
+  $('#transactionForm').addEventListener(
+    'submit',
+    saveTransaction
+  );
+
+  loadTransactions();
+}
+
+
+async function saveTransaction(event) {
+
+  event.preventDefault();
+
+  try {
+
+    await A.create(
+      'transactions',
+      {
+        user_id: user.$id,
+        type: $('#transactionType').value,
+        amount: Number($('#transactionAmount').value),
+        category: $('#transactionCategory').value,
+        description: $('#transactionDescription').value,
+        transaction_date: $('#transactionDate').value,
+        payment_method: $('#transactionPayment').value,
+        installments: 1,
+        installment_number: 1
+      },
+      user.$id
+    );
+
+    toast('transação salva');
+
+    event.target.reset();
+
+    $('#transactionDate').value =
+      new Date().toISOString().slice(0, 10);
+
+    loadTransactions();
+
+  } catch (error) {
+
+    console.error(error);
+
+    toast(error.message);
+  }
+}
+
+
+async function loadTransactions() {
+
+  const list = $('#transactionList');
+
+  if (!list) return;
+
+  try {
+
+    const rows = await A.list('transactions');
+
+    const mine = rows
+      .filter(row =>
+        row.data?.user_id === user.$id
+      )
+      .sort((a, b) =>
+        String(b.data.transaction_date)
+          .localeCompare(
+            String(a.data.transaction_date)
+          )
+      );
+
+    if (!mine.length) {
+
+      list.innerHTML =
+        '<p>nenhuma transação cadastrada.</p>';
+
+      return;
+    }
+
+    list.innerHTML = mine.map(row => {
+
+      const d = row.data;
+
+      return `
+
+        <div class="transaction">
+
+          <div>
+
+            <strong>
+              ${escapeHtml(d.category || 'sem categoria')}
+            </strong>
+
+            <small>
+              ${escapeHtml(d.description || '')}
+            </small>
+
+          </div>
+
+          <strong>
+            ${money(Number(d.amount) || 0)}
+          </strong>
+
+        </div>
+      `;
+
+    }).join('');
+
+  } catch (error) {
+
+    list.innerHTML =
+      `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+
+/* =========================
+   METAS
+========================= */
+
+function renderGoals() {
+
+  const main = $('#main');
+
+  main.innerHTML = `
+
+    <div class="page">
+
+      <h1>metas</h1>
+
+      <div class="panel">
+
+        <form id="goalForm">
+
+          <label>
+            nome da meta
+
+            <input id="goalName" required>
+          </label>
+
+          <label>
+            valor objetivo
+
+            <input
+              id="goalTarget"
+              type="number"
+              step="0.01"
+              required
+            >
+          </label>
+
+          <label>
+            valor já guardado
+
+            <input
+              id="goalSaved"
+              type="number"
+              step="0.01"
+              value="0"
+            >
+          </label>
+
+          <label>
+            data objetivo
+
+            <input
+              id="goalDate"
+              type="date"
+            >
+          </label>
+
+          <button class="primary">
+            salvar meta
+          </button>
+
+        </form>
+
+      </div>
+
+      <div class="panel">
+
+        <h2>suas metas</h2>
+
+        <div id="goalList">
+          carregando...
+        </div>
+
+      </div>
+
+    </div>
+  `;
+
+  $('#goalForm').addEventListener(
+    'submit',
+    saveGoal
+  );
+
+  loadGoals();
+}
+
+
+async function saveGoal(event) {
+
+  event.preventDefault();
+
+  try {
+
+    await A.create(
+      'goals',
+      {
+        user_id: user.$id,
+        name: $('#goalName').value,
+        target_amount:
+          Number($('#goalTarget').value),
+        saved_amount:
+          Number($('#goalSaved').value || 0),
+        target_date:
+          $('#goalDate').value,
+        description: ''
+      },
+      user.$id
+    );
+
+    toast('meta criada');
+
+    event.target.reset();
+
+    loadGoals();
+
+  } catch (error) {
+
+    toast(error.message);
+  }
+}
+
+
+async function loadGoals() {
+
+  const list = $('#goalList');
+
+  try {
+
+    const rows = await A.list('goals');
+
+    const mine = rows.filter(
+      row => row.data?.user_id === user.$id
+    );
+
+    if (!mine.length) {
+
+      list.innerHTML =
+        '<p>nenhuma meta cadastrada.</p>';
+
+      return;
+    }
+
+    list.innerHTML = mine.map(row => {
+
+      const d = row.data;
+
+      const target =
+        Number(d.target_amount) || 0;
+
+      const saved =
+        Number(d.saved_amount) || 0;
+
+      const percent =
+        target > 0
+          ? Math.min(100, (saved / target) * 100)
+          : 0;
+
+      return `
+
+        <div class="goal">
+
+          <strong>
+            ${escapeHtml(d.name)}
+          </strong>
+
+          <p>
+            ${money(saved)}
+            de
+            ${money(target)}
+          </p>
+
+          <div class="progress">
+            <div style="width:${percent}%"></div>
+          </div>
+
+          <small>
+            ${percent.toFixed(1)}%
+          </small>
+
+        </div>
+      `;
+
+    }).join('');
+
+  } catch (error) {
+
+    list.innerHTML =
+      `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+
+/* =========================
+   CONTAS
+========================= */
+
+function renderAccounts() {
+
+  const main = $('#main');
+
+  main.innerHTML = `
+
+    <div class="page">
+
+      <h1>contas</h1>
+
+      <div class="panel">
+
+        <form id="accountForm">
+
+          <label>
+            nome
+
+            <input id="accountName" required>
+          </label>
+
+          <label>
+            saldo
+
+            <input
+              id="accountBalance"
+              type="number"
+              step="0.01"
+              value="0"
+            >
+          </label>
+
+          <label>
+            dia de vencimento
+
+            <input
+              id="accountDue"
+              type="number"
+              min="1"
+              max="31"
+            >
+          </label>
+
+          <button class="primary">
+            salvar conta
+          </button>
+
+        </form>
+
+      </div>
+
+      <div class="panel">
+
+        <div id="accountList">
+          carregando...
+        </div>
+
+      </div>
+
+    </div>
+  `;
+
+  $('#accountForm').addEventListener(
+    'submit',
+    saveAccount
+  );
+
+  loadAccounts();
+}
+
+
+async function saveAccount(event) {
+
+  event.preventDefault();
+
+  try {
+
+    await A.create(
+      'accounts',
+      {
+        user_id: user.$id,
+        name: $('#accountName').value,
+        balance:
+          Number($('#accountBalance').value || 0),
+        due_day:
+          Number($('#accountDue').value || 0),
+        recurring: false
+      },
+      user.$id
+    );
+
+    toast('conta salva');
+
+    event.target.reset();
+
+    loadAccounts();
+
+  } catch (error) {
+
+    toast(error.message);
+  }
+}
+
+
+async function loadAccounts() {
+
+  const list = $('#accountList');
+
+  try {
+
+    const rows = await A.list('accounts');
+
+    const mine = rows.filter(
+      row => row.data?.user_id === user.$id
+    );
+
+    if (!mine.length) {
+
+      list.innerHTML =
+        '<p>nenhuma conta cadastrada.</p>';
+
+      return;
+    }
+
+    list.innerHTML = mine.map(row => {
+
+      const d = row.data;
+
+      return `
+
+        <div class="transaction">
+
+          <strong>
+            ${escapeHtml(d.name)}
+          </strong>
+
+          <strong>
+            ${money(Number(d.balance) || 0)}
+          </strong>
+
+        </div>
+      `;
+
+    }).join('');
+
+  } catch (error) {
+
+    list.innerHTML =
+      `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+
+/* =========================
+   CARTÕES
+========================= */
+
+function renderCards() {
+
+  const main = $('#main');
+
+  main.innerHTML = `
+
+    <div class="page">
+
+      <h1>cartões</h1>
+
+      <div class="panel">
+
+        <form id="cardForm">
+
+          <label>
+            nome do cartão
+
+            <input id="cardName" required>
+          </label>
+
+          <label>
+            limite
+
+            <input
+              id="cardLimit"
+              type="number"
+              step="0.01"
+              required
+            >
+          </label>
+
+          <label>
+            fatura atual
+
+            <input
+              id="cardBill"
+              type="number"
+              step="0.01"
+              value="0"
+            >
+          </label>
+
+          <label>
+            fechamento
+
+            <input
+              id="cardClosing"
+              type="number"
+              min="1"
+              max="31"
+            >
+          </label>
+
+          <label>
+            vencimento
+
+            <input
+              id="cardDue"
+              type="number"
+              min="1"
+              max="31"
+            >
+          </label>
+
+          <button class="primary">
+            salvar cartão
+          </button>
+
+        </form>
+
+      </div>
+
+      <div class="panel">
+
+        <div id="cardList">
+          carregando...
+        </div>
+
+      </div>
+
+    </div>
+  `;
+
+  $('#cardForm').addEventListener(
+    'submit',
+    saveCard
+  );
+
+  loadCards();
+}
+
+
+async function saveCard(event) {
+
+  event.preventDefault();
+
+  try {
+
+    await A.create(
+      'cards',
+      {
+        user_id: user.$id,
+        name: $('#cardName').value,
+        credit_limit:
+          Number($('#cardLimit').value),
+        current_bill:
+          Number($('#cardBill').value || 0),
+        closing_day:
+          Number($('#cardClosing').value || 0),
+        due_day:
+          Number($('#cardDue').value || 0)
+      },
+      user.$id
+    );
+
+    toast('cartão salvo');
+
+    event.target.reset();
+
+    loadCards();
+
+  } catch (error) {
+
+    toast(error.message);
+  }
+}
+
+
+async function loadCards() {
+
+  const list = $('#cardList');
+
+  try {
+
+    const rows = await A.list('cards');
+
+    const mine = rows.filter(
+      row => row.data?.user_id === user.$id
+    );
+
+    if (!mine.length) {
+
+      list.innerHTML =
+        '<p>nenhum cartão cadastrado.</p>';
+
+      return;
+    }
+
+    list.innerHTML = mine.map(row => {
+
+      const d = row.data;
+
+      return `
+
+        <div class="transaction">
+
+          <div>
+
+            <strong>
+              ${escapeHtml(d.name)}
+            </strong>
+
+            <small>
+              fatura atual:
+              ${money(Number(d.current_bill) || 0)}
+            </small>
+
+          </div>
+
+          <strong>
+            ${money(Number(d.credit_limit) || 0)}
+          </strong>
+
+        </div>
+      `;
+
+    }).join('');
+
+  } catch (error) {
+
+    list.innerHTML =
+      `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+
+/* =========================
+   CATEGORIAS
+========================= */
+
+function renderCategories() {
+
+  const main = $('#main');
+
+  main.innerHTML = `
+
+    <div class="page">
+
+      <h1>categorias</h1>
+
+      <div class="panel">
+
+        <form id="categoryForm">
+
+          <label>
+            nome
+
+            <input id="categoryName" required>
+          </label>
+
+          <label>
+            ícone
+
+            <input
+              id="categoryIcon"
+              value="◈"
+            >
+          </label>
+
+          <label>
+            limite mensal
+
+            <input
+              id="categoryLimit"
+              type="number"
+              step="0.01"
+              value="0"
+            >
+          </label>
+
+          <button class="primary">
+            salvar categoria
+          </button>
+
+        </form>
+
+      </div>
+
+      <div class="panel">
+
+        <div id="categoryList">
+          carregando...
+        </div>
+
+      </div>
+
+    </div>
+  `;
+
+  $('#categoryForm').addEventListener(
+    'submit',
+    saveCategory
+  );
+
+  loadCategories();
+}
+
+
+async function saveCategory(event) {
+
+  event.preventDefault();
+
+  try {
+
+    await A.create(
+      'categories',
+      {
+        user_id: user.$id,
+        name: $('#categoryName').value,
+        icon:
+          $('#categoryIcon').value || '◈',
+        monthly_limit:
+          Number($('#categoryLimit').value || 0)
+      },
+      user.$id
+    );
+
+    toast('categoria salva');
+
+    event.target.reset();
+
+    loadCategories();
+
+  } catch (error) {
+
+    toast(error.message);
+  }
+}
+
+
+async function loadCategories() {
+
+  const list = $('#categoryList');
+
+  try {
+
+    const rows =
+      await A.list('categories');
+
+    const mine =
+      rows.filter(
+        row =>
+          row.data?.user_id === user.$id
+      );
+
+    if (!mine.length) {
+
+      list.innerHTML =
+        '<p>nenhuma categoria cadastrada.</p>';
+
+      return;
+    }
+
+    list.innerHTML =
+      mine.map(row => {
+
+        const d = row.data;
+
+        return `
+
+          <div class="transaction">
+
+            <div>
+
+              <strong>
+                ${escapeHtml(d.icon || '◈')}
+                ${escapeHtml(d.name)}
+              </strong>
+
+              <small>
+                limite:
+                ${money(
+                  Number(d.monthly_limit) || 0
+                )}
+              </small>
+
+            </div>
+
+          </div>
+        `;
+
+      }).join('');
+
+  } catch (error) {
+
+    list.innerHTML =
+      `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+
+/* =========================
+   SALÁRIO
+========================= */
+
+function renderSalary() {
+
+  const main = $('#main');
+
+  main.innerHTML = `
+
+    <div class="page">
+
+      <h1>salário</h1>
+
+      <div class="panel">
+
+        <form id="salaryForm">
+
+          <label>
+            salário bruto
+
+            <input
+              id="salaryGross"
+              type="number"
+              step="0.01"
+            >
+          </label>
+
+          <label>
+            adiantamento %
+
+            <input
+              id="salaryAdvance"
+              type="number"
+              step="0.01"
+            >
+          </label>
+
+          <label>
+            INSS %
+
+            <input
+              id="salaryInss"
+              type="number"
+              step="0.01"
+            >
+          </label>
+
+          <label>
+            assistencial
+
+            <input
+              id="salaryAssist"
+              type="number"
+              step="0.01"
+            >
+          </label>
+
+          <label>
+            seguro de vida
+
+            <input
+              id="salaryLife"
+              type="number"
+              step="0.01"
+            >
+          </label>
+
+          <label>
+            negocial
+
+            <input
+              id="salaryNegocial"
+              type="number"
+              step="0.01"
+            >
+          </label>
+
+          <button class="primary">
+            calcular salário
+          </button>
+
+        </form>
+
+      </div>
+
+      <div class="panel">
+
+        <h2>resultado</h2>
+
+        <div id="salaryResult">
+          preencha os dados.
+        </div>
+
+      </div>
+
+    </div>
+  `;
+
+  loadSalary();
+
+  $('#salaryForm').addEventListener(
+    'submit',
+    calculateSalary
+  );
+}
+
+
+async function loadSalary() {
+
+  try {
+
+    const rows =
+      await A.list('settings');
+
+    const mine =
+      rows.find(
+        row =>
+          row.data?.user_id === user.$id
+      );
+
+    if (!mine) return;
+
+    const d = mine.data;
+
+    $('#salaryGross').value =
+      d.gross_salary ?? 2759.74;
+
+    $('#salaryAdvance').value =
+      d.advance_pct ?? 40;
+
+    $('#salaryInss').value =
+      d.inss_pct ?? 9;
+
+    $('#salaryAssist').value =
+      d.assist_pct ?? 2;
+
+    $('#salaryLife').value =
+      d.life_insurance ?? 3.82;
+
+    $('#salaryNegocial').value =
+      d.negocial ?? 21;
+
+  } catch (error) {
+
+    console.error(error);
+  }
+}
+
+
+async function calculateSalary(event) {
+
+  event.preventDefault();
+
+  const gross =
+    Number($('#salaryGross').value || 0);
+
+  const advancePct =
+    Number($('#salaryAdvance').value || 0);
+
+  const inssPct =
+    Number($('#salaryInss').value || 0);
+
+  const assistPct =
+    Number($('#salaryAssist').value || 0);
+
+  const life =
+    Number($('#salaryLife').value || 0);
+
+  const negocial =
+    Number($('#salaryNegocial').value || 0);
+
+
+  const advance =
+    gross * advancePct / 100;
+
+  const inss =
+    gross * inssPct / 100;
+
+  const assist =
+    gross * assistPct / 100;
+
+  const liquid =
+    gross -
+    inss -
+    assist -
+    life -
+    negocial;
+
+
+  $('#salaryResult').innerHTML = `
+
+    <div class="salary-result">
+
+      <p>
+        salário bruto
+        <strong>
+          ${money(gross)}
+        </strong>
+      </p>
+
+      <p>
+        adiantamento
+        <strong>
+          ${money(advance)}
+        </strong>
+      </p>
+
+      <p>
+        INSS
+        <strong>
+          ${money(inss)}
+        </strong>
+      </p>
+
+      <p>
+        assistencial
+        <strong>
+          ${money(assist)}
+        </strong>
+      </p>
+
+      <p>
+        seguro de vida
+        <strong>
+          ${money(life)}
+        </strong>
+      </p>
+
+      <p>
+        negocial
+        <strong>
+          ${money(negocial)}
+        </strong>
+      </p>
+
+      <hr>
+
+      <p>
+        salário líquido estimado
+        <strong>
+          ${money(liquid)}
+        </strong>
+      </p>
+
+    </div>
+  `;
+
+
+  try {
+
+    const rows =
+      await A.list('settings');
+
+    const mine =
+      rows.find(
+        row =>
+          row.data?.user_id === user.$id
+      );
+
+    const data = {
+      user_id: user.$id,
+      gross_salary: gross,
+      advance_pct: advancePct,
+      inss_pct: inssPct,
+      assist_pct: assistPct,
+      life_insurance: life,
+      negocial
+    };
+
+    if (mine) {
+
+      await A.update(
+        'settings',
+        mine.$id,
+        data
+      );
+
+    } else {
+
+      await A.create(
+        'settings',
+        data,
+        user.$id
+      );
+    }
+
+    toast('salário atualizado');
+
+  } catch (error) {
+
+    console.error(error);
+
+    toast(
+      'resultado calculado, mas não foi possível salvar.'
+    );
+  }
+}
+
+
+/* =========================
+   BILLS
+========================= */
+
+async function loadBills() {
+
+  try {
+
+    return await A.list('bills');
+
+  } catch (error) {
+
+    console.error(error);
+
+    return [];
+  }
+}
+
+
+/* =========================
+   INICIALIZAÇÃO
+========================= */
+
+async function startApp() {
+
+  const hello = $('#hello');
+
+  if (hello) {
+
+    hello.textContent =
+      `olá, ${user?.name || 'Mirela'}`;
+  }
+
+  renderHome();
+}
+
+
+(async function init() {
+
+  loadTheme();
+
+  try {
+
+    user = await A.me();
+
+    await ensureProfile();
+
+    await ensureSettings();
+
+    showApp();
+
+    await startApp();
+
+  } catch (error) {
+
+    console.log(
+      'nenhuma sessão ativa.'
+    );
+
+    showAuth();
+  }
+
+})();
