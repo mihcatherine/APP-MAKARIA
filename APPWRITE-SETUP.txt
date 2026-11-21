@@ -1,0 +1,17 @@
+CONFIGURAÇÃO DO APPWRITE
+
+No Appwrite: Databases > Production TablesDB > abra cada tabela > Settings e copie o ID da tabela.
+Cole no arquivo app.js nestes campos:
+
+profiles
+settings
+transactions
+goals
+accounts
+categories
+bills
+cards
+
+O projeto já tem endpoint, project ID e database ID preenchidos.
+
+IMPORTANTE: o site público não deve conter API Key. A autenticação é feita pelo Appwrite Auth.
